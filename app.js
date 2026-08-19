@@ -101,34 +101,462 @@ function render(){
   bindPage();
 }
 
+function periodStats(type){
+  const today = state.date;
+  const d = new Date(today + "T00:00:00");
+
+  let start, end;
+
+  if(type === "today"){
+    start = today;
+    end = today;
+  } 
+  else if(type === "month"){
+    start = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
+
+    const next = new Date(
+      d.getFullYear(),
+      d.getMonth() + 1,
+      1
+    );
+
+    end = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}-01`;
+  } 
+  else {
+    start = `${d.getFullYear()}-01-01`;
+    end = `${d.getFullYear()+1}-01-01`;
+  }
+
+  const orders = state.orders.filter(o => {
+    if(o.status !== "Delivered") return false;
+
+    if(type === "today"){
+      return o.order_date === today;
+    }
+
+    return o.order_date >= start && o.order_date < end;
+  });
+
+  const revenue = orders.reduce(
+    (n,o) => n + orderRevenue(o),
+    0
+  );
+
+  const cost = orders.reduce(
+    (n,o) => n + orderCost(o),
+    0
+  );
+
+  const profit = revenue - cost;
+
+  const portions = orders.reduce(
+    (n,o) => n + Number(o.portions || 0),
+    0
+  );
+
+  return {
+    orders: orders.length,
+    portions,
+    revenue,
+    cost,
+    profit,
+    margin: revenue ? (profit / revenue) * 100 : 0
+  };
+}
+
+
 function dashboardPage(){
-  const today=state.date;
-  const orders=state.orders.filter(o=>o.order_date===today);
-  const portions=orders.filter(o=>o.status!=="Cancelled").reduce((n,o)=>n+Number(o.portions),0);
-  const delivered=orders.filter(o=>o.status==="Delivered").reduce((n,o)=>n+Number(o.portions),0);
-  const cancelled=orders.filter(o=>o.status==="Cancelled").reduce((n,o)=>n+Number(o.portions),0);
-  const revenue=orders.filter(o=>o.status==="Delivered").reduce((n,o)=>n+orderRevenue(o),0);
-  const cost=orders.filter(o=>o.status==="Delivered").reduce((n,o)=>n+orderCost(o),0);
-  const profit=revenue-cost;
-  return `<div class="cards">
-    <div class="card"><div class="muted">Customers</div><div class="metric">${state.customers.length}</div></div>
-    <div class="card"><div class="muted">Today's orders</div><div class="metric">${orders.length}</div></div>
-    <div class="card"><div class="muted">Today's portions</div><div class="metric">${portions}</div></div>
-    <div class="card"><div class="muted">Delivered / Cancelled</div><div class="metric">${delivered} / ${cancelled}</div></div>
-    <div class="card"><div class="muted">Revenue today</div><div class="metric">Rp ${money(revenue)}</div></div>
-    <div class="card"><div class="muted">Cost today</div><div class="metric">Rp ${money(cost)}</div></div>
-    <div class="card"><div class="muted">Gross profit today</div><div class="metric">Rp ${money(profit)}</div><div class="hint">Margin ${revenue?((profit/revenue)*100).toFixed(1):"0.0"}%</div></div>
-  </div>
-  <div class="grid2">
-    <div class="panel"><div class="section-title"><h2>Customer Quota</h2><button class="mini" data-page-go="customers">View all</button></div>
-      ${state.customers.slice(0,8).map(c=>`<div style="padding:10px 0;border-bottom:1px solid var(--line)"><b>${esc(c.name)}</b><div class="hint">Lunch: ${customerRemaining(c,"Lunch")}/${c.lunch_quota??0} · Dinner: ${customerRemaining(c,"Dinner")}/${c.dinner_quota??0} · Revenue: Rp ${money(state.orders.filter(o=>o.customer_id===c.id&&o.status==="Delivered").reduce((n,o)=>n+orderRevenue(o),0))}</div></div>`).join("")}</div>
-    <div class="panel"><div class="section-title"><h2>Today</h2><button class="secondary" data-action="add-order">＋ Add Schedule</button></div>
-      <div class="table-wrap">${orders.length?orders.slice(0,8).map(orderRow).join(""):`<div class="empty">Belum ada order untuk ${fmtDate(today)}</div>`}</div>
+
+  const today = state.date;
+
+  // =========================
+  // TODAY OPERATIONAL DATA
+  // =========================
+
+  const allToday = state.orders.filter(
+    o => o.order_date === today
+  );
+
+  const portions = allToday
+    .filter(o => o.status !== "Cancelled")
+    .reduce(
+      (n,o) => n + Number(o.portions),
+      0
+    );
+
+  const delivered = allToday
+    .filter(o => o.status === "Delivered")
+    .reduce(
+      (n,o) => n + Number(o.portions),
+      0
+    );
+
+  const cancelled = allToday
+    .filter(o => o.status === "Cancelled")
+    .reduce(
+      (n,o) => n + Number(o.portions),
+      0
+    );
+
+
+  // =========================
+  // FINANCIAL DATA
+  // =========================
+
+  const todayStats = periodStats("today");
+  const monthStats = periodStats("month");
+  const yearStats = periodStats("year");
+
+
+  // =========================
+  // FINANCIAL CARD
+  // =========================
+
+  const financeCard = (label, stats) => `
+    <div class="finance-card">
+
+      <div class="muted">${label}</div>
+
+      <div class="finance-row">
+        <span>Revenue</span>
+        <b>Rp ${money(stats.revenue)}</b>
+      </div>
+
+      <div class="finance-row">
+        <span>Cost</span>
+        <b>Rp ${money(stats.cost)}</b>
+      </div>
+
+      <div class="finance-row">
+        <span>Gross Profit</span>
+        <b>Rp ${money(stats.profit)}</b>
+      </div>
+
+      <div class="finance-footer">
+        <span>
+          ${stats.orders} delivered orders ·
+          ${stats.portions} portions
+        </span>
+
+        <b>
+          Margin ${stats.margin.toFixed(1)}%
+        </b>
+      </div>
+
     </div>
-    <div class="panel"><div class="section-title"><h2>Quota Today</h2><button class="mini" data-page-go="quota">View all</button></div>
-      ${state.suppliers.filter(s=>s.active).map(s=>`<div class="quota-row"><b>${esc(s.name)}</b><div><div class="muted">Lunch ${reservedQuota(s.id,"Lunch",today)}/${s.lunch_quota}</div><div class="bar"><span style="width:${Math.min(100,reservedQuota(s.id,"Lunch",today)/Math.max(1,s.lunch_quota)*100)}%"></span></div><div class="hint">Dinner ${reservedQuota(s.id,"Dinner",today)}/${s.dinner_quota}</div></div><b>${s.lunch_quota+s.dinner_quota}</b></div>`).join("")}
+  `;
+
+
+  return `
+
+    <!-- =========================
+         TOP OPERATIONAL CARDS
+    ========================== -->
+
+    <div class="cards">
+
+      <div class="card">
+        <div class="muted">Customers</div>
+        <div class="metric">
+          ${state.customers.length}
+        </div>
+      </div>
+
+
+      <div class="card">
+        <div class="muted">Today's orders</div>
+        <div class="metric">
+          ${allToday.length}
+        </div>
+      </div>
+
+
+      <div class="card">
+        <div class="muted">Today's portions</div>
+        <div class="metric">
+          ${portions}
+        </div>
+      </div>
+
+
+      <div class="card">
+        <div class="muted">
+          Delivered / Cancelled
+        </div>
+
+        <div class="metric">
+          ${delivered} / ${cancelled}
+        </div>
+      </div>
+
     </div>
-  </div>`;
+
+
+    <!-- =========================
+         FINANCIAL OVERVIEW
+    ========================== -->
+
+    <div class="panel finance-panel">
+
+      <div class="section-title">
+
+        <div>
+          <h2>Financial Overview</h2>
+
+          <div class="hint">
+            Revenue, cost & gross profit
+            dari order yang sudah Delivered
+          </div>
+        </div>
+
+      </div>
+
+
+      <div class="finance-grid">
+
+        ${financeCard(
+          "Today",
+          todayStats
+        )}
+
+        ${financeCard(
+          "This Month",
+          monthStats
+        )}
+
+        ${financeCard(
+          "This Year",
+          yearStats
+        )}
+
+      </div>
+
+    </div>
+
+
+    <!-- =========================
+         CUSTOMER + TODAY + QUOTA
+    ========================== -->
+
+    <div class="grid2">
+
+
+      <!-- CUSTOMER QUOTA -->
+
+      <div class="panel">
+
+        <div class="section-title">
+
+          <h2>Customer Quota</h2>
+
+          <button
+            class="mini"
+            data-page-go="customers"
+          >
+            View all
+          </button>
+
+        </div>
+
+
+        ${state.customers
+          .slice(0,8)
+          .map(c => `
+
+            <div
+              style="
+                padding:10px 0;
+                border-bottom:1px solid var(--line)
+              "
+            >
+
+              <b>
+                ${esc(c.name)}
+              </b>
+
+              <div class="hint">
+
+                Lunch:
+                ${customerRemaining(c,"Lunch")}
+                /
+                ${c.lunch_quota ?? 0}
+
+                ·
+
+                Dinner:
+                ${customerRemaining(c,"Dinner")}
+                /
+                ${c.dinner_quota ?? 0}
+
+                ·
+
+                Revenue:
+                Rp ${money(
+                  state.orders
+                    .filter(
+                      o =>
+                        o.customer_id === c.id &&
+                        o.status === "Delivered"
+                    )
+                    .reduce(
+                      (n,o) =>
+                        n + orderRevenue(o),
+                      0
+                    )
+                )}
+
+              </div>
+
+            </div>
+
+          `)
+          .join("")}
+
+      </div>
+
+
+      <!-- TODAY ORDERS -->
+
+      <div class="panel">
+
+        <div class="section-title">
+
+          <h2>Today</h2>
+
+          <button
+            class="secondary"
+            data-action="add-order"
+          >
+            ＋ Add Schedule
+          </button>
+
+        </div>
+
+
+        <div class="table-wrap">
+
+          ${
+            allToday.length
+
+            ? allToday
+                .slice(0,8)
+                .map(orderRow)
+                .join("")
+
+            : `
+              <div class="empty">
+                Belum ada order untuk
+                ${fmtDate(today)}
+              </div>
+            `
+          }
+
+        </div>
+
+      </div>
+
+
+      <!-- QUOTA TODAY -->
+
+      <div class="panel">
+
+        <div class="section-title">
+
+          <h2>Quota Today</h2>
+
+          <button
+            class="mini"
+            data-page-go="quota"
+          >
+            View all
+          </button>
+
+        </div>
+
+
+        ${state.suppliers
+          .filter(s => s.active)
+          .map(s => `
+
+            <div class="quota-row">
+
+              <b>
+                ${esc(s.name)}
+              </b>
+
+
+              <div>
+
+                <div class="muted">
+
+                  Lunch
+                  ${reservedQuota(
+                    s.id,
+                    "Lunch",
+                    today
+                  )}
+                  /
+                  ${s.lunch_quota}
+
+                </div>
+
+
+                <div class="bar">
+
+                  <span
+                    style="
+                      width:${Math.min(
+                        100,
+                        reservedQuota(
+                          s.id,
+                          "Lunch",
+                          today
+                        ) /
+                        Math.max(
+                          1,
+                          s.lunch_quota
+                        ) *
+                        100
+                      )}%
+                    "
+                  ></span>
+
+                </div>
+
+
+                <div class="hint">
+
+                  Dinner
+                  ${reservedQuota(
+                    s.id,
+                    "Dinner",
+                    today
+                  )}
+                  /
+                  ${s.dinner_quota}
+
+                </div>
+
+              </div>
+
+
+              <b>
+                ${
+                  s.lunch_quota +
+                  s.dinner_quota
+                }
+              </b>
+
+            </div>
+
+          `)
+          .join("")}
+
+      </div>
+
+    </div>
+
+  `;
 }
 function orderRow(o){
   return `<tr><td>${fmtDate(o.order_date)}</td><td><b>${esc(customerName(o.customer_id))}</b><div class="muted">${esc(o.notes||"")}</div></td><td>${esc(supplierName(o.supplier_id))}</td><td>${o.meal}</td><td>${o.portions}</td><td>${o.status==="Delivered"?`Rp ${money(orderRevenue(o))}`:"-"}</td><td>${o.status==="Delivered"?`Rp ${money(orderCost(o))}`:"-"}</td><td>${o.status==="Delivered"?`Rp ${money(orderProfit(o))}`:"-"}</td><td>${badge(o.status)}</td><td><div class="actions">${o.status!=="Delivered"&&o.status!=="Cancelled"?`<button class="mini" data-action="edit-order" data-id="${o.id}">Edit</button><button class="mini" data-action="cancel" data-id="${o.id}">Cancel</button>`:""}${o.status==="Confirmed"?`<button class="mini" data-action="deliver" data-id="${o.id}">📸 Deliver</button>`:""}${o.status==="Scheduled"?`<button class="mini" data-action="confirm" data-id="${o.id}">Confirm</button>`:""}</div></td></tr>`;
