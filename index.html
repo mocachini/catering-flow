@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Catering Flow</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span>🍱</span><div><b>Catering Flow</b><small>Admin</small></div></div>
+    <button class="nav active" data-page="dashboard">🏠 Dashboard</button>
+    <button class="nav" data-page="customers">👥 Customers</button>
+    <button class="nav" data-page="orders">📅 Schedules / Orders</button>
+    <button class="nav" data-page="suppliers">🏭 Suppliers</button>
+    <button class="nav" data-page="delivery">📸 Delivery</button>
+    <button class="nav" data-page="quota">📊 Quota</button>
+    <button class="nav" data-page="whatsapp">💬 WhatsApp</button>
+    <div class="sidebar-foot">
+      <button id="refreshBtn" class="ghost full">↻ Refresh</button>
+      <small id="connectionText">Demo mode</small>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="pageTitle">Dashboard</h1>
+        <p id="pageSubtitle">Overview operasional catering</p>
+      </div>
+      <div class="top-actions">
+        <span id="todayLabel"></span>
+        <button class="primary" id="quickAddBtn">＋ Quick Add Order</button>
+      </div>
+    </header>
+
+    <section id="app"></section>
+  </main>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head"><h2 id="modalTitle"></h2><button id="closeModal" class="icon">×</button></div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <input id="deliveryFile" type="file" accept="image/*" hidden>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
