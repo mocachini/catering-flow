@@ -609,16 +609,74 @@ function whatsappPage(){
   </div>`;
 }
 function makeWA(date,supplierId,meal){
-  let os=state.orders.filter(o=>o.order_date===date&&o.status!=="Cancelled"&&(!supplierId||o.supplier_id===supplierId)&&(!meal||o.meal===meal));
-  const sup=supplierName(supplierId);
-  const lines=[`CATERING — ${fmtDate(date)}`,sup?`SUPPLIER: ${sup}`:""];
-  for(const m of ["Lunch","Dinner"]){
-    const part=os.filter(o=>o.meal===m);
-    if(!part.length)continue;
-    lines.push("",`=== ${m.toUpperCase()} ===`);
-    part.forEach((o,i)=>lines.push(`${i+1}. ${customerName(o.customer_id)} — ${o.portions} porsi`,`Alamat: ${state.customers.find(c=>c.id===o.customer_id)?.address||"-"}`,`Notes: ${o.notes||state.customers.find(c=>c.id===o.customer_id)?.notes||"-"}`,""));
+  let os=state.orders
+    .filter(o =>
+      o.order_date===date &&
+      o.status!=="Cancelled" &&
+      (!supplierId || o.supplier_id===supplierId) &&
+      (!meal || o.meal===meal)
+    );
+
+  if(!os.length) return "Tidak ada order.";
+
+  const suppliers = supplierId
+    ? state.suppliers.filter(s => s.id===supplierId)
+    : state.suppliers.filter(s =>
+        os.some(o => o.supplier_id===s.id)
+      );
+
+  const lines = [
+    `CATERING — ${fmtDate(date)}`
+  ];
+
+  for(const sup of suppliers){
+
+    const supplierOrders = os.filter(
+      o => o.supplier_id===sup.id
+    );
+
+    if(!supplierOrders.length) continue;
+
+    lines.push(
+      "",
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `SUPPLIER: ${sup.name}`,
+      `━━━━━━━━━━━━━━━━━━━━`
+    );
+
+    for(const m of ["Lunch","Dinner"]){
+
+      const part = supplierOrders.filter(
+        o => o.meal===m
+      );
+
+      if(!part.length) continue;
+
+      lines.push(
+        "",
+        `【 ${m.toUpperCase()} 】`,
+        ""
+      );
+
+      part.forEach(o => {
+
+        const customer = state.customers.find(
+          c => c.id===o.customer_id
+        );
+
+        lines.push(
+          `Nama: ${customer?.name || "-"}`,
+          `Alamat: ${customer?.address || "-"}`,
+          `Note: ${o.notes || customer?.notes || "-"}`,
+          `Porsi: ${o.portions}`,
+          ""
+        );
+
+      });
+    }
   }
-  return lines.join("\n").trim()||"Tidak ada order.";
+
+  return lines.join("\n").trim();
 }
 
 function openModal(title,body){el("modalTitle").textContent=title;el("modalBody").innerHTML=body;el("modal").classList.remove("hidden")}
