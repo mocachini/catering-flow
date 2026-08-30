@@ -39,8 +39,14 @@ function customerDelivered(customerId,meal){
   return state.orders.filter(o=>o.customer_id===customerId&&o.meal===meal&&o.status==="Delivered").reduce((n,o)=>n+Number(o.portions),0)
 }
 function customerRemaining(customer,meal){
-  const initial=Number(meal==="Lunch"?customer?.lunch_quota:customer?.dinner_quota)||0;
-  return Math.max(0,initial-customerDelivered(customer.id,meal));
+  return Math.max(
+    0,
+    Number(
+      meal==="Lunch"
+        ? customer?.lunch_quota
+        : customer?.dinner_quota
+    ) || 0
+  );
 }
 function customerName(id){return state.customers.find(x=>x.id===id)?.name || "-"}
 function badge(s){return `<span class="badge ${s.toLowerCase()}">${s}</span>`}
@@ -684,94 +690,175 @@ function closeModal(){el("modal").classList.add("hidden")}
 function customerForm(c={}){
   const isEdit = !!c.id;
 
-  return `<form id="customerForm" data-id="${c.id||""}">
+  return `
+  <form id="customerForm" data-id="${c.id||""}">
     <div class="form-grid">
 
       <div class="field">
         <label>Nama *</label>
-        <input class="input" name="name" required value="${esc(c.name||"")}">
+        <input
+          class="input"
+          name="name"
+          required
+          value="${esc(c.name||"")}"
+        >
       </div>
 
       <div class="field">
         <label>WhatsApp</label>
-        <input class="input" name="whatsapp" value="${esc(c.whatsapp||"")}">
+        <input
+          class="input"
+          name="whatsapp"
+          value="${esc(c.whatsapp||"")}"
+        >
       </div>
 
       <div class="field full-row">
         <label>Alamat *</label>
-        <textarea class="textarea" name="address" required>${esc(c.address||"")}</textarea>
+        <textarea
+          class="textarea"
+          name="address"
+          required
+        >${esc(c.address||"")}</textarea>
       </div>
 
       <div class="field">
         <label>Default Supplier</label>
         <select class="select" name="default_supplier_id">
           <option value="">-</option>
+
           ${state.suppliers.map(s=>`
-            <option value="${s.id}" ${c.default_supplier_id===s.id?"selected":""}>
+            <option
+              value="${s.id}"
+              ${c.default_supplier_id===s.id?"selected":""}
+            >
               ${esc(s.name)}
             </option>
           `).join("")}
+
         </select>
       </div>
 
       ${
         isEdit
         ? `
-          <div class="field">
-            <label>Lunch Quota Saat Ini</label>
-            <input class="input" type="number" value="${customerRemaining(c,"Lunch")}" disabled>
-          </div>
 
-          <div class="field">
-            <label>Top Up Lunch</label>
-            <input class="input" type="number" min="0" name="lunch_topup" value="0">
-            <div class="hint">Tambahkan quota baru ke saldo customer.</div>
-          </div>
+        <div class="field">
+          <label>Lunch Quota Saat Ini</label>
+          <input
+            class="input"
+            type="number"
+            value="${customerRemaining(c,"Lunch")}"
+            disabled
+          >
+        </div>
 
-          <div class="field">
-            <label>Dinner Quota Saat Ini</label>
-            <input class="input" type="number" value="${customerRemaining(c,"Dinner")}" disabled>
+        <div class="field">
+          <label>Top Up Lunch</label>
+          <input
+            class="input"
+            type="number"
+            min="0"
+            name="lunch_topup"
+            value="0"
+          >
+          <div class="hint">
+            Isi hanya jika ingin menambah quota.
           </div>
+        </div>
 
-          <div class="field">
-            <label>Top Up Dinner</label>
-            <input class="input" type="number" min="0" name="dinner_topup" value="0">
-            <div class="hint">Tambahkan quota baru ke saldo customer.</div>
+        <div class="field">
+          <label>Dinner Quota Saat Ini</label>
+          <input
+            class="input"
+            type="number"
+            value="${customerRemaining(c,"Dinner")}"
+            disabled
+          >
+        </div>
+
+        <div class="field">
+          <label>Top Up Dinner</label>
+          <input
+            class="input"
+            type="number"
+            min="0"
+            name="dinner_topup"
+            value="0"
+          >
+          <div class="hint">
+            Isi hanya jika ingin menambah quota.
           </div>
+        </div>
+
         `
         : `
-          <div class="field">
-            <label>Lunch Quota</label>
-            <input class="input" type="number" min="0" name="lunch_quota" value="0">
-          </div>
 
-          <div class="field">
-            <label>Dinner Quota</label>
-            <input class="input" type="number" min="0" name="dinner_quota" value="0">
-          </div>
+        <div class="field">
+          <label>Lunch Quota</label>
+          <input
+            class="input"
+            type="number"
+            min="0"
+            name="lunch_quota"
+            value="0"
+          >
+        </div>
+
+        <div class="field">
+          <label>Dinner Quota</label>
+          <input
+            class="input"
+            type="number"
+            min="0"
+            name="dinner_quota"
+            value="0"
+          >
+        </div>
+
         `
       }
 
       <div class="field">
         <label>Harga Lunch / porsi</label>
-        <input class="input" type="number" min="0" name="lunch_price" value="${c.lunch_price??0}">
+        <input
+          class="input"
+          type="number"
+          min="0"
+          name="lunch_price"
+          value="${c.lunch_price??0}"
+        >
       </div>
 
       <div class="field">
         <label>Harga Dinner / porsi</label>
-        <input class="input" type="number" min="0" name="dinner_price" value="${c.dinner_price??0}">
+        <input
+          class="input"
+          type="number"
+          min="0"
+          name="dinner_price"
+          value="${c.dinner_price??0}"
+        >
       </div>
 
       <div class="field full-row">
         <label>Notes</label>
-        <input class="input" name="notes" value="${esc(c.notes||"")}">
+        <input
+          class="input"
+          name="notes"
+          value="${esc(c.notes||"")}"
+        >
       </div>
 
     </div>
 
-    <button class="primary" style="margin-top:15px">
+    <button
+      class="primary"
+      style="margin-top:15px"
+    >
       ${isEdit ? "Save & Update Customer" : "Save Customer"}
     </button>
+
   </form>`;
 }
 function supplierForm(s={}){
@@ -812,29 +899,232 @@ function scheduleForm(){
 }
 
 async function saveOrder(payload,id=null){
-  // quota guard only for active orders; editing same order excludes itself
-  const existing = id ? state.orders.find(x=>x.id===id) : null;
-  const other = state.orders.filter(x=>x.id!==id && x.supplier_id===payload.supplier_id && x.meal===payload.meal && x.order_date===payload.order_date && x.status!=="Cancelled");
-  const reserved=other.reduce((n,o)=>n+Number(o.portions),0);
-  const sup=state.suppliers.find(s=>s.id===payload.supplier_id);
-  const cap=quotaFor(sup,payload.meal);
-  const cust=state.customers.find(c=>c.id===payload.customer_id);
-  const custQuota=Number(payload.meal==="Lunch"?cust?.lunch_quota:cust?.dinner_quota)||0;
-  const custUsed=state.orders.filter(x=>x.id!==id&&x.customer_id===payload.customer_id&&x.meal===payload.meal&&x.status==="Delivered").reduce((n,x)=>n+Number(x.portions),0);
-  const custReserved=state.orders.filter(x=>x.id!==id&&x.customer_id===payload.customer_id&&x.meal===payload.meal&&x.status!=="Cancelled").reduce((n,x)=>n+Number(x.portions),0);
-  if(payload.status!=="Cancelled" && reserved+Number(payload.portions)>cap){
-    alert(`Quota supplier ${payload.meal} ${sup.name} tidak cukup. Available: ${Math.max(0,cap-reserved)} porsi.`);
+
+  const existing = id
+    ? state.orders.find(x => x.id === id)
+    : null;
+
+  const newPortions = Math.max(
+    0,
+    Number(payload.portions) || 0
+  );
+
+  const newActive = payload.status !== "Cancelled";
+
+
+  // =========================================
+  // SUPPLIER QUOTA
+  // =========================================
+
+  const otherOrders = state.orders.filter(o =>
+    o.id !== id &&
+    o.supplier_id === payload.supplier_id &&
+    o.meal === payload.meal &&
+    o.order_date === payload.order_date &&
+    o.status !== "Cancelled"
+  );
+
+  const reserved = otherOrders.reduce(
+    (n,o) => n + Number(o.portions || 0),
+    0
+  );
+
+  const supplier = state.suppliers.find(
+    s => s.id === payload.supplier_id
+  );
+
+  const supplierCapacity = quotaFor(
+    supplier,
+    payload.meal
+  );
+
+  if(
+    newActive &&
+    reserved + newPortions > supplierCapacity
+  ){
+    alert(
+      `Quota supplier ${payload.meal} ${supplier?.name || ""} tidak cukup.\n\n` +
+      `Available: ${Math.max(
+        0,
+        supplierCapacity - reserved
+      )} porsi.`
+    );
+
     return false;
   }
-  if(payload.status!=="Cancelled" && custReserved+Number(payload.portions)>custQuota){
-    alert(`Quota customer ${cust.name} untuk ${payload.meal} tidak cukup. Sisa reserved: ${Math.max(0,custQuota-custReserved)} porsi.`);
-    return false;
+
+
+  // =========================================
+  // CUSTOMER QUOTA = LIVE BALANCE
+  // =========================================
+  //
+  // Contoh:
+  // quota sekarang 10
+  // order 4
+  // => quota jadi 6
+  //
+  // Cancel order 4
+  // => quota kembali jadi 10
+  //
+  // Top up dilakukan dari customerForm().
+  // =========================================
+
+  const changes = [];
+
+  function addChange(customerId,meal,delta){
+
+    if(!customerId || !meal || !delta){
+      return;
+    }
+
+    const key = `${customerId}|${meal}`;
+
+    const existingChange =
+      changes.find(x => x.key === key);
+
+    if(existingChange){
+      existingChange.delta += delta;
+    }else{
+      changes.push({
+        key,
+        customerId,
+        meal,
+        delta
+      });
+    }
   }
-  if(payload.status==="Delivered" && !payload.delivery_photo_path && !existing?.delivery_photo_path){
-    alert("Order Delivered harus punya foto delivery. Gunakan tombol Deliver untuk upload foto.");
-    return false;
+
+
+  // -----------------------------------------
+  // Kalau edit/cancel order lama:
+  // kembalikan quota order lama terlebih dahulu
+  // -----------------------------------------
+
+  const oldActive =
+    !!existing &&
+    existing.status !== "Cancelled";
+
+  if(oldActive){
+
+    addChange(
+      existing.customer_id,
+      existing.meal,
+      Number(existing.portions || 0)
+    );
+
   }
-  return save("orders",{...payload,updated_at:new Date().toISOString()},id);
+
+
+  // -----------------------------------------
+  // Kalau order baru / order hasil edit aktif:
+  // potong quota
+  // -----------------------------------------
+
+  if(newActive){
+
+    addChange(
+      payload.customer_id,
+      payload.meal,
+      -newPortions
+    );
+
+  }
+
+
+  // =========================================
+  // VALIDASI CUSTOMER QUOTA
+  // =========================================
+
+  const nextBalances = [];
+
+  for(const change of changes){
+
+    const customer =
+      state.customers.find(
+        c => c.id === change.customerId
+      );
+
+    if(!customer){
+
+      alert("Customer tidak ditemukan.");
+
+      return false;
+    }
+
+
+    const field =
+      change.meal === "Lunch"
+        ? "lunch_quota"
+        : "dinner_quota";
+
+
+    const current =
+      Math.max(
+        0,
+        Number(customer[field]) || 0
+      );
+
+
+    const next =
+      current + change.delta;
+
+
+    if(next < 0){
+
+      alert(
+        `Quota customer ${customer.name} untuk ${change.meal} tidak cukup.\n\n` +
+        `Sisa quota: ${current} porsi.`
+      );
+
+      return false;
+    }
+
+
+    nextBalances.push({
+      customer,
+      field,
+      next
+    });
+
+  }
+
+
+  // =========================================
+  // SIMPAN QUOTA CUSTOMER
+  // =========================================
+
+  for(const item of nextBalances){
+
+    const ok = await save(
+      "customers",
+      {
+        [item.field]: item.next
+      },
+      item.customer.id
+    );
+
+    if(ok === false){
+      return false;
+    }
+
+  }
+
+
+  // =========================================
+  // SIMPAN ORDER
+  // =========================================
+
+  const ok = await save(
+    "orders",
+    {
+      ...payload,
+      updated_at: new Date().toISOString()
+    },
+    id
+  );
+
+
+  return ok !== false;
 }
 
 async function bindPage(){
@@ -872,7 +1162,7 @@ el("refreshBtn").onclick=async()=>{await loadData();render()};
 
 el("modalBody").addEventListener("submit",async e=>{
   e.preventDefault(); const f=e.target; const fd=new FormData(f);
-  if(f.id==="customerForm"){
+if(f.id==="customerForm"){
 
   const id = f.dataset.id || null;
 
@@ -880,31 +1170,79 @@ el("modalBody").addEventListener("submit",async e=>{
     ? state.customers.find(c => c.id === id)
     : null;
 
-  const lunchTopup = Number(fd.get("lunch_topup") || 0);
-  const dinnerTopup = Number(fd.get("dinner_topup") || 0);
+
+  const lunchTopup =
+    Number(fd.get("lunch_topup") || 0);
+
+  const dinnerTopup =
+    Number(fd.get("dinner_topup") || 0);
+
 
   const payload = {
+
     name: fd.get("name"),
+
     whatsapp: fd.get("whatsapp"),
+
     address: fd.get("address"),
+
     notes: fd.get("notes"),
-    default_supplier_id: fd.get("default_supplier_id") || null,
+
+    default_supplier_id:
+      fd.get("default_supplier_id") || null,
+
+
+    // CUSTOMER BARU
+    // langsung mulai dari quota yang diinput
+    //
+    // CUSTOMER LAMA
+    // quota sekarang + top up
 
     lunch_quota: existing
-      ? Number(existing.lunch_quota || 0) + lunchTopup
-      : Number(fd.get("lunch_quota") || 0),
+      ? Math.max(
+          0,
+          Number(existing.lunch_quota || 0)
+          + lunchTopup
+        )
+      : Math.max(
+          0,
+          Number(fd.get("lunch_quota") || 0)
+        ),
+
 
     dinner_quota: existing
-      ? Number(existing.dinner_quota || 0) + dinnerTopup
-      : Number(fd.get("dinner_quota") || 0),
+      ? Math.max(
+          0,
+          Number(existing.dinner_quota || 0)
+          + dinnerTopup
+        )
+      : Math.max(
+          0,
+          Number(fd.get("dinner_quota") || 0)
+        ),
 
-    lunch_price: Number(fd.get("lunch_price") || 0),
-    dinner_price: Number(fd.get("dinner_price") || 0),
+
+    lunch_price:
+      Number(fd.get("lunch_price") || 0),
+
+    dinner_price:
+      Number(fd.get("dinner_price") || 0),
+
     active: true
   };
 
-  await save("customers", payload, id);
-  closeModal();
+
+  const ok = await save(
+    "customers",
+    payload,
+    id
+  );
+
+
+  if(ok !== false){
+    closeModal();
+  }
+
 }
   if(f.id==="supplierForm"){
     const payload={name:fd.get("name"),lunch_quota:+fd.get("lunch_quota"),dinner_quota:+fd.get("dinner_quota"),lunch_buy_price:+fd.get("lunch_buy_price"),dinner_buy_price:+fd.get("dinner_buy_price"),active:true};
