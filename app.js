@@ -774,7 +774,6 @@ function customerForm(c={}){
     </button>
   </form>`;
 }
-}
 function supplierForm(s={}){
   return `<form id="supplierForm"><div class="form-grid">
   <div class="field full-row"><label>Nama supplier *</label><input class="input" name="name" required value="${esc(s.name||"")}"></div>
