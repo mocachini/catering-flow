@@ -23,6 +23,7 @@ const state = {
   suppliers: [],
   orders: [],
   date: new Date().toISOString().slice(0, 10),
+
   filterSupplier: "",
   filterMeal: "",
   filterStatus: "",
@@ -73,14 +74,16 @@ const demo = {
       address: "Terravia Adora BSD City",
       notes: "Tidak pedas",
       default_supplier_id: "s1",
+
+      // CURRENT BALANCE
       lunch_quota: 20,
-      lunch_quota_total: 20,
       dinner_quota: 10,
-      dinner_quota_total: 10,
+
       lunch_price: 75000,
       dinner_price: 80000,
       active: true
     },
+
     {
       id: "c2",
       name: "Tio Jason",
@@ -88,10 +91,11 @@ const demo = {
       address: "Jl. Trimezia VII No. 6, Gading Serpong",
       notes: "Menu siang dan malam sama",
       default_supplier_id: "s2",
+
+      // CURRENT BALANCE
       lunch_quota: 15,
-      lunch_quota_total: 15,
       dinner_quota: 15,
-      dinner_quota_total: 15,
+
       lunch_price: 70000,
       dinner_price: 70000,
       active: true
@@ -156,19 +160,23 @@ function money(n) {
 }
 
 function customerPrice(customer, meal) {
-  return Number(
-    meal === "Lunch"
-      ? customer?.lunch_price
-      : customer?.dinner_price
-  ) || 0;
+  return (
+    Number(
+      meal === "Lunch"
+        ? customer?.lunch_price
+        : customer?.dinner_price
+    ) || 0
+  );
 }
 
 function supplierPrice(supplier, meal) {
-  return Number(
-    meal === "Lunch"
-      ? supplier?.lunch_buy_price
-      : supplier?.dinner_buy_price
-  ) || 0;
+  return (
+    Number(
+      meal === "Lunch"
+        ? supplier?.lunch_buy_price
+        : supplier?.dinner_buy_price
+    ) || 0
+  );
 }
 
 function orderRevenue(o) {
@@ -177,9 +185,7 @@ function orderRevenue(o) {
     Number(
       o.selling_price ??
       customerPrice(
-        state.customers.find(
-          c => c.id === o.customer_id
-        ),
+        state.customers.find(c => c.id === o.customer_id),
         o.meal
       )
     )
@@ -192,9 +198,7 @@ function orderCost(o) {
     Number(
       o.buying_price ??
       supplierPrice(
-        state.suppliers.find(
-          s => s.id === o.supplier_id
-        ),
+        state.suppliers.find(s => s.id === o.supplier_id),
         o.meal
       )
     )
@@ -205,70 +209,154 @@ function orderProfit(o) {
   return orderRevenue(o) - orderCost(o);
 }
 
-function badge(s) {
-  return `<span class="badge ${String(s).toLowerCase()}">${s}</span>`;
+function badge(status) {
+  return `<span class="badge ${String(status).toLowerCase()}">${esc(status)}</span>`;
 }
 
 
 /* =========================================================
    CUSTOMER QUOTA
+   IMPORTANT:
+   quota = CURRENT BALANCE ONLY
+   Tidak menghitung histori Delivered.
 ========================================================= */
 
-/*
-  PENTING:
-
-  lunch_quota = SISA QUOTA SAAT INI
-  lunch_quota_total = TOTAL BATCH AKTIF
-
-  Contoh:
-
-  beli 10
-  => 10/10
-
-  order 4
-  => 6/10
-
-  order 6
-  => 0/10
-
-  top up 10 ketika 0
-  => 10/10
-
-  masih punya 3 lalu top up 10
-  => 13/13
-*/
-
 function customerRemaining(customer, meal) {
-  return Math.max(
-    0,
-    Number(
-      meal === "Lunch"
-        ? customer?.lunch_quota
-        : customer?.dinner_quota
-    ) || 0
-  );
+  if (!customer) return 0;
+
+  return Number(
+    meal === "Lunch"
+      ? customer.lunch_quota
+      : customer.dinner_quota
+  ) || 0;
 }
 
-function customerQuotaTotal(customer, meal) {
-  const quota =
-    Number(
-      meal === "Lunch"
-        ? customer?.lunch_quota
-        : customer?.dinner_quota
-    ) || 0;
 
-  const total =
-    Number(
-      meal === "Lunch"
-        ? customer?.lunch_quota_total
-        : customer?.dinner_quota_total
-    ) || 0;
+/*
+  Ambil field quota customer.
+*/
+function customerQuotaField(meal) {
+  return meal === "Lunch"
+    ? "lunch_quota"
+    : "dinner_quota";
+}
+
+
+/*
+  Mengurangi quota customer setelah order benar-benar Delivered.
+*/
+async function deductCustomerQuota(order) {
+  if (!order) return false;
+
+  const customer = state.customers.find(
+    c => c.id === order.customer_id
+  );
+
+  if (!customer) {
+    alert("Customer tidak ditemukan.");
+    return false;
+  }
+
+  const field = customerQuotaField(order.meal);
+
+  const currentQuota = Number(customer[field] || 0);
+  const portions = Number(order.portions || 0);
+
+  if (portions <= 0) {
+    alert("Jumlah porsi tidak valid.");
+    return false;
+  }
+
+  if (currentQuota < portions) {
+    alert(
+      `Quota customer ${customer.name} untuk ${order.meal} tidak cukup.\n\n` +
+      `Quota sekarang: ${currentQuota}\n` +
+      `Porsi order: ${portions}`
+    );
+
+    return false;
+  }
+
+  const newQuota = currentQuota - portions;
 
   /*
-    Untuk customer lama yang belum punya
-    quota_total, pakai quota sebagai fallback.
+    DEMO MODE
   */
-  return Math.max(0, total || quota);
+  if (!sb) {
+    customer[field] = newQuota;
+    render();
+    return true;
+  }
+
+  /*
+    SUPABASE
+  */
+  const { error } = await sb
+    .from("customers")
+    .update({
+      [field]: newQuota
+    })
+    .eq("id", customer.id);
+
+  if (error) {
+    alert(
+      "Gagal mengurangi quota customer: " +
+      error.message
+    );
+    return false;
+  }
+
+  await loadData();
+
+  return true;
+}
+
+
+/*
+  Mengembalikan quota customer.
+  Dipakai jika suatu saat order Delivered dibatalkan
+  atau status dikembalikan sebelum settlement.
+*/
+async function restoreCustomerQuota(order) {
+  if (!order) return false;
+
+  const customer = state.customers.find(
+    c => c.id === order.customer_id
+  );
+
+  if (!customer) return false;
+
+  const field = customerQuotaField(order.meal);
+
+  const currentQuota = Number(customer[field] || 0);
+  const portions = Number(order.portions || 0);
+
+  const newQuota = currentQuota + portions;
+
+  if (!sb) {
+    customer[field] = newQuota;
+    render();
+    return true;
+  }
+
+  const { error } = await sb
+    .from("customers")
+    .update({
+      [field]: newQuota
+    })
+    .eq("id", customer.id);
+
+  if (error) {
+    alert(
+      "Gagal mengembalikan quota customer: " +
+      error.message
+    );
+    return false;
+  }
+
+  await loadData();
+
+  return true;
 }
 
 
@@ -277,10 +365,12 @@ function customerQuotaTotal(customer, meal) {
 ========================================================= */
 
 function quotaFor(supplier, meal) {
+  if (!supplier) return 0;
+
   return Number(
     meal === "Lunch"
-      ? supplier?.lunch_quota
-      : supplier?.dinner_quota
+      ? supplier.lunch_quota
+      : supplier.dinner_quota
   ) || 0;
 }
 
@@ -291,12 +381,13 @@ function usedQuota(
   statusOnly = false
 ) {
   return state.orders
-    .filter(o =>
-      o.supplier_id === supplierId &&
-      o.meal === meal &&
-      o.order_date === date &&
-      o.status !== "Cancelled" &&
-      (!statusOnly || o.status === "Delivered")
+    .filter(
+      o =>
+        o.supplier_id === supplierId &&
+        o.meal === meal &&
+        o.order_date === date &&
+        o.status !== "Cancelled" &&
+        (!statusOnly || o.status === "Delivered")
     )
     .reduce(
       (n, o) => n + Number(o.portions || 0),
@@ -310,11 +401,12 @@ function reservedQuota(
   date
 ) {
   return state.orders
-    .filter(o =>
-      o.supplier_id === supplierId &&
-      o.meal === meal &&
-      o.order_date === date &&
-      o.status !== "Cancelled"
+    .filter(
+      o =>
+        o.supplier_id === supplierId &&
+        o.meal === meal &&
+        o.order_date === date &&
+        o.status !== "Cancelled"
     )
     .reduce(
       (n, o) => n + Number(o.portions || 0),
@@ -328,21 +420,20 @@ function reservedQuota(
 ========================================================= */
 
 async function loadData() {
-
   if (!sb) {
-
     state.suppliers = demo.suppliers;
     state.customers = demo.customers;
     state.orders = demo.orders;
 
-    el("connectionText").textContent =
-      "Demo mode — local browser";
+    if (el("connectionText")) {
+      el("connectionText").textContent =
+        "Demo mode — local browser";
+    }
 
     return;
   }
 
   const [s, c, o] = await Promise.all([
-
     sb
       .from("suppliers")
       .select("*")
@@ -360,11 +451,9 @@ async function loadData() {
       .order("order_date", {
         ascending: false
       })
-
   ]);
 
   if (s.error || c.error || o.error) {
-
     console.error(
       s.error || c.error || o.error
     );
@@ -381,8 +470,10 @@ async function loadData() {
   state.customers = c.data || [];
   state.orders = o.data || [];
 
-  el("connectionText").textContent =
-    "● Connected to Supabase";
+  if (el("connectionText")) {
+    el("connectionText").textContent =
+      "● Connected to Supabase";
+  }
 }
 
 
@@ -395,31 +486,25 @@ async function save(
   payload,
   id = null
 ) {
-
   if (!sb) {
-
     const arr = state[table];
 
     if (id) {
-
-      const i = arr.findIndex(
+      const index = arr.findIndex(
         x => x.id === id
       );
 
-      if (i >= 0) {
-        arr[i] = {
-          ...arr[i],
+      if (index >= 0) {
+        arr[index] = {
+          ...arr[index],
           ...payload
         };
       }
-
     } else {
-
       arr.unshift({
         id: crypto.randomUUID(),
         ...payload
       });
-
     }
 
     render();
@@ -427,27 +512,23 @@ async function save(
     return true;
   }
 
+  let result;
 
-  const q = id
-    ? sb
-        .from(table)
-        .update(payload)
-        .eq("id", id)
-    : sb
-        .from(table)
-        .insert(payload);
-
-
-  const { error } = await q;
-
-
-  if (error) {
-
-    alert(error.message);
-
-    return false;
+  if (id) {
+    result = await sb
+      .from(table)
+      .update(payload)
+      .eq("id", id);
+  } else {
+    result = await sb
+      .from(table)
+      .insert(payload);
   }
 
+  if (result.error) {
+    alert(result.error.message);
+    return false;
+  }
 
   await loadData();
   render();
@@ -457,97 +538,150 @@ async function save(
 
 
 /* =========================================================
-   DELETE ORDER
+   REMOVE ORDER
 ========================================================= */
 
 async function removeOrder(id) {
-
-  if (!confirm("Hapus order ini?")) {
+  if (
+    !confirm(
+      "Hapus order ini?"
+    )
+  ) {
     return;
   }
 
-  const order =
-    state.orders.find(x => x.id === id);
+  const order = state.orders.find(
+    x => x.id === id
+  );
 
-  /*
-    Kalau order aktif dihapus,
-    quota customer harus dikembalikan.
-  */
+  if (!order) return;
 
-  if (
-    order &&
-    order.status !== "Cancelled"
-  ) {
-
-    const customer =
-      state.customers.find(
-        c => c.id === order.customer_id
-      );
-
-    if (customer) {
-
-      const field =
-        order.meal === "Lunch"
-          ? "lunch_quota"
-          : "dinner_quota";
-
-      const current =
-        Number(customer[field]) || 0;
-
-      await save(
-        "customers",
-        {
-          [field]:
-            current +
-            Number(order.portions || 0)
-        },
-        customer.id
-      );
-    }
+  if (order.status === "Delivered") {
+    alert(
+      "Order Delivered tidak boleh dihapus karena quota customer sudah terpakai."
+    );
+    return;
   }
-
 
   if (!sb) {
-
-    state.orders =
-      state.orders.filter(
-        x => x.id !== id
-      );
+    state.orders = state.orders.filter(
+      x => x.id !== id
+    );
 
     render();
 
     return;
   }
 
-
-  const { error } =
-    await sb
-      .from("orders")
-      .delete()
-      .eq("id", id);
-
+  const { error } = await sb
+    .from("orders")
+    .delete()
+    .eq("id", id);
 
   if (error) {
-
     alert(error.message);
-
   } else {
-
     await loadData();
     render();
-
   }
 }
 
 
 /* =========================================================
-   RENDER
+   DASHBOARD PERIOD STATS
+========================================================= */
+
+function periodStats(type) {
+  const today = state.date;
+
+  const d = new Date(
+    today + "T00:00:00"
+  );
+
+  let start;
+  let end;
+
+  if (type === "today") {
+    start = today;
+    end = today;
+  }
+
+  else if (type === "month") {
+    start =
+      `${d.getFullYear()}-` +
+      `${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+
+    const next = new Date(
+      d.getFullYear(),
+      d.getMonth() + 1,
+      1
+    );
+
+    end =
+      `${next.getFullYear()}-` +
+      `${String(next.getMonth() + 1).padStart(2, "0")}-01`;
+  }
+
+  else {
+    start =
+      `${d.getFullYear()}-01-01`;
+
+    end =
+      `${d.getFullYear() + 1}-01-01`;
+  }
+
+  const orders = state.orders.filter(o => {
+    if (o.status !== "Delivered") {
+      return false;
+    }
+
+    if (type === "today") {
+      return o.order_date === today;
+    }
+
+    return (
+      o.order_date >= start &&
+      o.order_date < end
+    );
+  });
+
+  const revenue = orders.reduce(
+    (n, o) => n + orderRevenue(o),
+    0
+  );
+
+  const cost = orders.reduce(
+    (n, o) => n + orderCost(o),
+    0
+  );
+
+  const profit = revenue - cost;
+
+  const portions = orders.reduce(
+    (n, o) =>
+      n + Number(o.portions || 0),
+    0
+  );
+
+  return {
+    orders: orders.length,
+    portions,
+    revenue,
+    cost,
+    profit,
+    margin: revenue
+      ? (profit / revenue) * 100
+      : 0
+  };
+}
+
+
+/* =========================================================
+   MAIN RENDER
 ========================================================= */
 
 function render() {
-
   const pages = {
-
     dashboard: [
       "Dashboard",
       "Overview operasional catering"
@@ -582,32 +716,33 @@ function render() {
       "WhatsApp",
       "Generate pesan supplier siap paste"
     ]
-
   };
 
+  if (el("pageTitle")) {
+    el("pageTitle").textContent =
+      pages[state.page][0];
+  }
 
-  el("pageTitle").textContent =
-    pages[state.page][0];
+  if (el("pageSubtitle")) {
+    el("pageSubtitle").textContent =
+      pages[state.page][1];
+  }
 
-  el("pageSubtitle").textContent =
-    pages[state.page][1];
-
-  el("todayLabel").textContent =
-    todayLabel();
-
+  if (el("todayLabel")) {
+    el("todayLabel").textContent =
+      todayLabel();
+  }
 
   document
     .querySelectorAll(".nav")
-    .forEach(b =>
+    .forEach(b => {
       b.classList.toggle(
         "active",
         b.dataset.page === state.page
-      )
-    );
-
+      );
+    });
 
   const body = {
-
     dashboard: dashboardPage,
     customers: customersPage,
     orders: ordersPage,
@@ -615,129 +750,14 @@ function render() {
     delivery: deliveryPage,
     quota: quotaPage,
     whatsapp: whatsappPage
-
   }[state.page];
 
-
-  el("app").innerHTML =
-    `<div class="content">${body()}</div>`;
-
+  if (el("app") && body) {
+    el("app").innerHTML =
+      `<div class="content">${body()}</div>`;
+  }
 
   bindPage();
-}
-
-
-/* =========================================================
-   PERIOD STATS
-========================================================= */
-
-function periodStats(type) {
-
-  const today = state.date;
-
-  const d =
-    new Date(today + "T00:00:00");
-
-  let start;
-  let end;
-
-
-  if (type === "today") {
-
-    start = today;
-    end = today;
-
-  }
-
-  else if (type === "month") {
-
-    start =
-      `${d.getFullYear()}-${
-        String(d.getMonth() + 1)
-          .padStart(2, "0")
-      }-01`;
-
-    const next =
-      new Date(
-        d.getFullYear(),
-        d.getMonth() + 1,
-        1
-      );
-
-    end =
-      `${next.getFullYear()}-${
-        String(next.getMonth() + 1)
-          .padStart(2, "0")
-      }-01`;
-
-  }
-
-  else {
-
-    start =
-      `${d.getFullYear()}-01-01`;
-
-    end =
-      `${d.getFullYear() + 1}-01-01`;
-
-  }
-
-
-  const orders =
-    state.orders.filter(o => {
-
-      if (o.status !== "Delivered") {
-        return false;
-      }
-
-      if (type === "today") {
-        return o.order_date === today;
-      }
-
-      return (
-        o.order_date >= start &&
-        o.order_date < end
-      );
-
-    });
-
-
-  const revenue =
-    orders.reduce(
-      (n, o) => n + orderRevenue(o),
-      0
-    );
-
-  const cost =
-    orders.reduce(
-      (n, o) => n + orderCost(o),
-      0
-    );
-
-  const profit =
-    revenue - cost;
-
-  const portions =
-    orders.reduce(
-      (n, o) =>
-        n + Number(o.portions || 0),
-      0
-    );
-
-
-  return {
-
-    orders: orders.length,
-    portions,
-    revenue,
-    cost,
-    profit,
-    margin:
-      revenue
-        ? (profit / revenue) * 100
-        : 0
-
-  };
 }
 
 
@@ -746,14 +766,12 @@ function periodStats(type) {
 ========================================================= */
 
 function dashboardPage() {
-
   const today = state.date;
 
   const allToday =
     state.orders.filter(
       o => o.order_date === today
     );
-
 
   const portions =
     allToday
@@ -766,7 +784,6 @@ function dashboardPage() {
         0
       );
 
-
   const delivered =
     allToday
       .filter(
@@ -778,7 +795,6 @@ function dashboardPage() {
         0
       );
 
-
   const cancelled =
     allToday
       .filter(
@@ -789,7 +805,6 @@ function dashboardPage() {
           n + Number(o.portions || 0),
         0
       );
-
 
   const todayStats =
     periodStats("today");
@@ -803,9 +818,7 @@ function dashboardPage() {
 
   const financeCard =
     (label, stats) => `
-
       <div class="finance-card">
-
         <div class="muted">
           ${label}
         </div>
@@ -832,28 +845,20 @@ function dashboardPage() {
         </div>
 
         <div class="finance-footer">
-
           <span>
-            ${stats.orders}
-            delivered orders ·
-            ${stats.portions}
-            portions
+            ${stats.orders} delivered orders ·
+            ${stats.portions} portions
           </span>
 
           <b>
-            Margin
-            ${stats.margin.toFixed(1)}%
+            Margin ${stats.margin.toFixed(1)}%
           </b>
-
         </div>
-
       </div>
-
     `;
 
 
   return `
-
     <div class="cards">
 
       <div class="card">
@@ -905,7 +910,6 @@ function dashboardPage() {
     <div class="panel finance-panel">
 
       <div class="section-title">
-
         <div>
           <h2>
             Financial Overview
@@ -916,7 +920,6 @@ function dashboardPage() {
             dari order yang sudah Delivered
           </div>
         </div>
-
       </div>
 
 
@@ -945,6 +948,8 @@ function dashboardPage() {
     <div class="grid2">
 
 
+      <!-- CUSTOMER QUOTA -->
+
       <div class="panel">
 
         <div class="section-title">
@@ -970,8 +975,7 @@ function dashboardPage() {
             <div
               style="
                 padding:10px 0;
-                border-bottom:
-                  1px solid var(--line)
+                border-bottom:1px solid var(--line)
               "
             >
 
@@ -983,32 +987,30 @@ function dashboardPage() {
 
                 Lunch:
                 ${customerRemaining(c, "Lunch")}
-                /
-                ${customerQuotaTotal(c, "Lunch")}
 
                 ·
 
                 Dinner:
                 ${customerRemaining(c, "Dinner")}
-                /
-                ${customerQuotaTotal(c, "Dinner")}
 
                 ·
 
                 Revenue:
-                Rp ${money(
-                  state.orders
-                    .filter(
-                      o =>
-                        o.customer_id === c.id &&
-                        o.status === "Delivered"
-                    )
-                    .reduce(
-                      (n, o) =>
-                        n + orderRevenue(o),
-                      0
-                    )
-                )}
+                Rp ${
+                  money(
+                    state.orders
+                      .filter(
+                        o =>
+                          o.customer_id === c.id &&
+                          o.status === "Delivered"
+                      )
+                      .reduce(
+                        (n, o) =>
+                          n + orderRevenue(o),
+                        0
+                      )
+                  )
+                }
 
               </div>
 
@@ -1019,6 +1021,8 @@ function dashboardPage() {
 
       </div>
 
+
+      <!-- TODAY -->
 
       <div class="panel">
 
@@ -1061,6 +1065,8 @@ function dashboardPage() {
       </div>
 
 
+      <!-- SUPPLIER QUOTA -->
+
       <div class="panel">
 
         <div class="section-title">
@@ -1081,86 +1087,93 @@ function dashboardPage() {
 
         ${state.suppliers
           .filter(s => s.active)
-          .map(s => `
+          .map(s => {
 
-            <div class="quota-row">
+            const lunchReserved =
+              reservedQuota(
+                s.id,
+                "Lunch",
+                today
+              );
 
-              <b>
-                ${esc(s.name)}
-              </b>
+            const dinnerReserved =
+              reservedQuota(
+                s.id,
+                "Dinner",
+                today
+              );
 
-              <div>
+            return `
 
-                <div class="muted">
+              <div class="quota-row">
 
-                  Lunch
-                  ${reservedQuota(
-                    s.id,
-                    "Lunch",
-                    today
-                  )}
-                  /
-                  ${s.lunch_quota}
+                <b>
+                  ${esc(s.name)}
+                </b>
 
-                </div>
 
-                <div class="bar">
+                <div>
 
-                  <span
-                    style="
-                      width:${
-                        Math.min(
+                  <div class="muted">
+
+                    Lunch
+                    ${lunchReserved}
+                    /
+                    ${s.lunch_quota}
+
+                  </div>
+
+
+                  <div class="bar">
+
+                    <span
+                      style="
+                        width:${Math.min(
                           100,
-                          reservedQuota(
-                            s.id,
-                            "Lunch",
-                            today
-                          ) /
+                          lunchReserved /
                           Math.max(
                             1,
-                            s.lunch_quota
+                            Number(s.lunch_quota || 0)
                           ) *
                           100
-                        )
-                      }%
-                    "
-                  ></span>
+                        )}%
+                      "
+                    ></span>
+
+                  </div>
+
+
+                  <div class="hint">
+
+                    Dinner
+                    ${dinnerReserved}
+                    /
+                    ${s.dinner_quota}
+
+                  </div>
 
                 </div>
 
 
-                <div class="hint">
-
-                  Dinner
-                  ${reservedQuota(
-                    s.id,
-                    "Dinner",
-                    today
-                  )}
-                  /
-                  ${s.dinner_quota}
-
-                </div>
+                <b>
+                  ${
+                    Math.max(
+                      0,
+                      Number(s.lunch_quota || 0) -
+                      lunchReserved
+                    )
+                  }
+                </b>
 
               </div>
 
-
-              <b>
-                ${
-                  Number(s.lunch_quota || 0) +
-                  Number(s.dinner_quota || 0)
-                }
-              </b>
-
-            </div>
-
-          `)
+            `;
+          })
           .join("")}
 
       </div>
 
     </div>
-
   `;
 }
 
@@ -1172,14 +1185,15 @@ function dashboardPage() {
 function orderRow(o) {
 
   return `
-
     <tr>
 
       <td>
         ${fmtDate(o.order_date)}
       </td>
 
+
       <td>
+
         <b>
           ${esc(
             customerName(o.customer_id)
@@ -1189,7 +1203,9 @@ function orderRow(o) {
         <div class="muted">
           ${esc(o.notes || "")}
         </div>
+
       </td>
+
 
       <td>
         ${esc(
@@ -1197,15 +1213,19 @@ function orderRow(o) {
         )}
       </td>
 
-      <td>
-        ${o.meal}
-      </td>
 
       <td>
-        ${o.portions}
+        ${esc(o.meal)}
       </td>
 
+
       <td>
+        ${Number(o.portions || 0)}
+      </td>
+
+
+      <td>
+
         ${
           o.status === "Delivered"
             ? `Rp ${money(
@@ -1213,9 +1233,12 @@ function orderRow(o) {
               )}`
             : "-"
         }
+
       </td>
 
+
       <td>
+
         ${
           o.status === "Delivered"
             ? `Rp ${money(
@@ -1223,9 +1246,12 @@ function orderRow(o) {
               )}`
             : "-"
         }
+
       </td>
 
+
       <td>
+
         ${
           o.status === "Delivered"
             ? `Rp ${money(
@@ -1233,22 +1259,25 @@ function orderRow(o) {
               )}`
             : "-"
         }
+
       </td>
+
 
       <td>
         ${badge(o.status)}
       </td>
 
+
       <td>
 
         <div class="actions">
+
 
           ${
             o.status !== "Delivered" &&
             o.status !== "Cancelled"
 
               ? `
-
                 <button
                   class="mini"
                   data-action="edit-order"
@@ -1264,7 +1293,6 @@ function orderRow(o) {
                 >
                   Cancel
                 </button>
-
               `
 
               : ""
@@ -1275,7 +1303,6 @@ function orderRow(o) {
             o.status === "Confirmed"
 
               ? `
-
                 <button
                   class="mini"
                   data-action="deliver"
@@ -1283,7 +1310,6 @@ function orderRow(o) {
                 >
                   📸 Deliver
                 </button>
-
               `
 
               : ""
@@ -1294,7 +1320,6 @@ function orderRow(o) {
             o.status === "Scheduled"
 
               ? `
-
                 <button
                   class="mini"
                   data-action="confirm"
@@ -1302,7 +1327,6 @@ function orderRow(o) {
                 >
                   Confirm
                 </button>
-
               `
 
               : ""
@@ -1313,7 +1337,6 @@ function orderRow(o) {
       </td>
 
     </tr>
-
   `;
 }
 
@@ -1325,7 +1348,6 @@ function orderRow(o) {
 function tableWrap(rows, heads) {
 
   return `
-
     <div class="table-wrap">
 
       <table class="table">
@@ -1344,18 +1366,21 @@ function tableWrap(rows, heads) {
 
         </thead>
 
+
         <tbody>
 
           ${
             rows ||
             `
               <tr>
+
                 <td
                   colspan="${heads.length}"
                   class="empty"
                 >
                   Tidak ada data
                 </td>
+
               </tr>
             `
           }
@@ -1365,7 +1390,6 @@ function tableWrap(rows, heads) {
       </table>
 
     </div>
-
   `;
 }
 
@@ -1378,7 +1402,6 @@ function customersPage() {
 
   const q =
     state.search.toLowerCase();
-
 
   const data =
     state.customers.filter(c =>
@@ -1463,16 +1486,22 @@ function customersPage() {
               <td>
 
                 Lunch:
-                ${customerRemaining(c, "Lunch")}
-                /
-                ${customerQuotaTotal(c, "Lunch")}
+                <b>
+                  ${customerRemaining(
+                    c,
+                    "Lunch"
+                  )}
+                </b>
 
                 <br>
 
                 Dinner:
-                ${customerRemaining(c, "Dinner")}
-                /
-                ${customerQuotaTotal(c, "Dinner")}
+                <b>
+                  ${customerRemaining(
+                    c,
+                    "Dinner"
+                  )}
+                </b>
 
               </td>
 
@@ -1494,38 +1523,42 @@ function customersPage() {
 
               <td>
 
-                Rp ${money(
-                  state.orders
-                    .filter(
-                      o =>
-                        o.customer_id === c.id &&
-                        o.status === "Delivered"
-                    )
-                    .reduce(
-                      (n, o) =>
-                        n + orderRevenue(o),
-                      0
-                    )
-                )}
+                Rp ${
+                  money(
+                    state.orders
+                      .filter(
+                        o =>
+                          o.customer_id === c.id &&
+                          o.status === "Delivered"
+                      )
+                      .reduce(
+                        (n, o) =>
+                          n + orderRevenue(o),
+                        0
+                      )
+                  )
+                }
 
               </td>
 
 
               <td>
 
-                Rp ${money(
-                  state.orders
-                    .filter(
-                      o =>
-                        o.customer_id === c.id &&
-                        o.status === "Delivered"
-                    )
-                    .reduce(
-                      (n, o) =>
-                        n + orderProfit(o),
-                      0
-                    )
-                )}
+                Rp ${
+                  money(
+                    state.orders
+                      .filter(
+                        o =>
+                          o.customer_id === c.id &&
+                          o.status === "Delivered"
+                      )
+                      .reduce(
+                        (n, o) =>
+                          n + orderProfit(o),
+                        0
+                      )
+                  )
+                }
 
               </td>
 
@@ -1567,7 +1600,6 @@ function customersPage() {
       )}
 
     </div>
-
   `;
 }
 
@@ -1611,13 +1643,16 @@ function suppliersPage() {
                 </b>
               </td>
 
+
               <td>
                 ${s.lunch_quota}
               </td>
 
+
               <td>
                 ${s.dinner_quota}
               </td>
+
 
               <td>
 
@@ -1633,13 +1668,17 @@ function suppliersPage() {
 
               </td>
 
+
               <td>
+
                 ${
                   s.active
                     ? "Active"
                     : "Inactive"
                 }
+
               </td>
+
 
               <td>
 
@@ -1670,7 +1709,6 @@ function suppliersPage() {
       )}
 
     </div>
-
   `;
 }
 
@@ -1684,46 +1722,40 @@ function ordersPage() {
   const date =
     state.date;
 
-
   let data =
     state.orders.filter(
-      o => o.order_date === date
+      o =>
+        o.order_date === date
     );
 
 
   if (state.filterSupplier) {
-
     data =
       data.filter(
         o =>
           o.supplier_id ===
           state.filterSupplier
       );
-
   }
 
 
   if (state.filterMeal) {
-
     data =
       data.filter(
         o =>
           o.meal ===
           state.filterMeal
       );
-
   }
 
 
   if (state.filterStatus) {
-
     data =
       data.filter(
         o =>
           o.status ===
           state.filterStatus
       );
-
   }
 
 
@@ -1767,20 +1799,20 @@ function ordersPage() {
           </option>
 
           ${state.suppliers
-            .map(s => `
-
-              <option
-                value="${s.id}"
-                ${
-                  state.filterSupplier === s.id
-                    ? "selected"
-                    : ""
-                }
-              >
-                ${esc(s.name)}
-              </option>
-
-            `)
+            .map(
+              s => `
+                <option
+                  value="${s.id}"
+                  ${
+                    state.filterSupplier === s.id
+                      ? "selected"
+                      : ""
+                  }
+                >
+                  ${esc(s.name)}
+                </option>
+              `
+            )
             .join("")}
 
         </select>
@@ -1827,14 +1859,14 @@ function ordersPage() {
             All status
           </option>
 
-          ${
-            [
-              "Scheduled",
-              "Confirmed",
-              "Delivered",
-              "Cancelled"
-            ]
-              .map(x => `
+          ${[
+            "Scheduled",
+            "Confirmed",
+            "Delivered",
+            "Cancelled"
+          ]
+            .map(
+              x => `
                 <option
                   ${
                     state.filterStatus === x
@@ -1844,9 +1876,9 @@ function ordersPage() {
                 >
                   ${x}
                 </option>
-              `)
-              .join("")
-          }
+              `
+            )
+            .join("")}
 
         </select>
 
@@ -1875,7 +1907,6 @@ function ordersPage() {
       )}
 
     </div>
-
   `;
 }
 
@@ -1929,6 +1960,7 @@ function deliveryPage() {
                 ${fmtDate(o.order_date)}
               </td>
 
+
               <td>
 
                 <b>
@@ -1949,13 +1981,16 @@ function deliveryPage() {
 
               </td>
 
+
               <td>
                 ${o.meal}
               </td>
 
+
               <td>
                 ${o.portions}
               </td>
+
 
               <td>
                 Rp ${money(
@@ -1963,17 +1998,20 @@ function deliveryPage() {
                 )}
               </td>
 
+
               <td>
                 Rp ${money(
                   orderCost(o)
                 )}
               </td>
 
+
               <td>
                 Rp ${money(
                   orderProfit(o)
                 )}
               </td>
+
 
               <td>
 
@@ -1994,14 +2032,17 @@ function deliveryPage() {
 
               </td>
 
+
               <td>
                 ${badge(o.status)}
               </td>
+
 
               <td>
 
                 ${
                   o.status === "Confirmed"
+
                     ? `
                       <button
                         class="mini"
@@ -2011,6 +2052,7 @@ function deliveryPage() {
                         📸 Upload Delivery
                       </button>
                     `
+
                     : ""
                 }
 
@@ -2037,7 +2079,6 @@ function deliveryPage() {
       )}
 
     </div>
-
   `;
 }
 
@@ -2048,13 +2089,20 @@ function deliveryPage() {
 
 function photoUrl(path) {
 
-  return sb
-    ? sb.storage
-        .from("delivery-proofs")
-        .getPublicUrl(path)
-        .data.publicUrl
-    : path;
+  if (!path) {
+    return "";
+  }
 
+  if (!sb) {
+    return path;
+  }
+
+  return sb
+    .storage
+    .from("delivery-proofs")
+    .getPublicUrl(path)
+    .data
+    .publicUrl;
 }
 
 
@@ -2066,7 +2114,6 @@ function quotaPage() {
 
   const date =
     state.date;
-
 
   const dayDelivered =
     state.orders.filter(
@@ -2150,79 +2197,91 @@ function quotaPage() {
         Actual delivered = order yang sudah ada
         bukti delivery.
 
+        Cancel H-1 otomatis membebaskan
+        reserved slot supplier.
+
       </div>
 
 
       ${state.suppliers
-        .map(s => `
+        .map(
+          s => `
 
-          <div
-            class="panel"
-            style="margin-bottom:12px"
-          >
+            <div
+              class="panel"
+              style="margin-bottom:12px"
+            >
 
-            <h3>
-              ${esc(s.name)}
-            </h3>
-
-
-            ${["Lunch", "Dinner"]
-              .map(meal => {
-
-                const reserved =
-                  reservedQuota(
-                    s.id,
-                    meal,
-                    date
-                  );
-
-                const del =
-                  usedQuota(
-                    s.id,
-                    meal,
-                    date,
-                    true
-                  );
-
-                const cap =
-                  quotaFor(
-                    s,
-                    meal
-                  );
+              <h3>
+                ${esc(s.name)}
+              </h3>
 
 
-                return `
+              ${["Lunch", "Dinner"]
+                .map(meal => {
 
-                  <div class="quota-row">
+                  const reserved =
+                    reservedQuota(
+                      s.id,
+                      meal,
+                      date
+                    );
 
-                    <b>
-                      ${meal}
-                    </b>
+                  const delivered =
+                    usedQuota(
+                      s.id,
+                      meal,
+                      date,
+                      true
+                    );
 
-                    <div>
+                  const cap =
+                    quotaFor(
+                      s,
+                      meal
+                    );
+
+                  const available =
+                    Math.max(
+                      0,
+                      cap - reserved
+                    );
+
+
+                  return `
+
+                    <div class="quota-row">
+
+                      <b>
+                        ${meal}
+                      </b>
+
 
                       <div>
 
-                        <b>
-                          ${reserved}/${cap}
-                        </b>
+                        <div>
 
-                        reserved ·
+                          <b>
+                            ${reserved}/${cap}
+                          </b>
 
-                        <span class="muted">
-                          ${del}
-                          delivered
-                        </span>
+                          reserved
 
-                      </div>
+                          ·
+
+                          <span class="muted">
+                            ${delivered}
+                            delivered
+                          </span>
+
+                        </div>
 
 
-                      <div class="bar">
+                        <div class="bar">
 
-                        <span
-                          style="
-                            width:${
-                              Math.min(
+                          <span
+                            style="
+                              width:${Math.min(
                                 100,
                                 reserved /
                                 Math.max(
@@ -2230,59 +2289,46 @@ function quotaPage() {
                                   cap
                                 ) *
                                 100
-                              )
-                            }%
-                          "
-                        ></span>
+                              )}%
+                            "
+                          ></span>
+
+                        </div>
+
+
+                        <div class="hint">
+
+                          ${available}
+                          slot available
+
+                        </div>
 
                       </div>
 
 
-                      <div class="hint">
-
-                        ${
-                          Math.max(
-                            0,
-                            cap - reserved
-                          )
-                        }
-
-                        slot available
-
-                      </div>
+                      <b>
+                        ${available}
+                      </b>
 
                     </div>
 
+                  `;
+                })
+                .join("")}
 
-                    <b>
-                      ${
-                        Math.max(
-                          0,
-                          cap - reserved
-                        )
-                      }
-                    </b>
+            </div>
 
-                  </div>
-
-                `;
-
-              })
-              .join("")}
-
-          </div>
-
-        `)
+          `
+        )
         .join("")}
 
     </div>
-
   `;
 }
 
 
 /* =========================================================
-   WHATSAPP
+   WHATSAPP PAGE
 ========================================================= */
 
 function whatsappPage() {
@@ -2331,20 +2377,20 @@ function whatsappPage() {
           </option>
 
           ${state.suppliers
-            .map(s => `
-
-              <option
-                value="${s.id}"
-                ${
-                  state.filterSupplier === s.id
-                    ? "selected"
-                    : ""
-                }
-              >
-                ${esc(s.name)}
-              </option>
-
-            `)
+            .map(
+              s => `
+                <option
+                  value="${s.id}"
+                  ${
+                    state.filterSupplier === s.id
+                      ? "selected"
+                      : ""
+                  }
+                >
+                  ${esc(s.name)}
+                </option>
+              `
+            )
             .join("")}
 
         </select>
@@ -2386,10 +2432,13 @@ function whatsappPage() {
       </div>
 
     </div>
-
   `;
 }
 
+
+/* =========================================================
+   WHATSAPP GENERATOR
+========================================================= */
 
 function makeWA(
   date,
@@ -2397,22 +2446,19 @@ function makeWA(
   meal
 ) {
 
-  const os =
-    state.orders.filter(o =>
-      o.order_date === date &&
-      o.status !== "Cancelled" &&
-      (
-        !supplierId ||
-        o.supplier_id === supplierId
-      ) &&
-      (
-        !meal ||
-        o.meal === meal
-      )
+  const orders =
+    state.orders.filter(
+      o =>
+        o.order_date === date &&
+        o.status !== "Cancelled" &&
+        (!supplierId ||
+          o.supplier_id === supplierId) &&
+        (!meal ||
+          o.meal === meal)
     );
 
 
-  if (!os.length) {
+  if (!orders.length) {
     return "Tidak ada order.";
   }
 
@@ -2426,7 +2472,7 @@ function makeWA(
 
       : state.suppliers.filter(
           s =>
-            os.some(
+            orders.some(
               o =>
                 o.supplier_id === s.id
             )
@@ -2441,7 +2487,7 @@ function makeWA(
   for (const sup of suppliers) {
 
     const supplierOrders =
-      os.filter(
+      orders.filter(
         o =>
           o.supplier_id === sup.id
       );
@@ -2510,7 +2556,9 @@ function makeWA(
   }
 
 
-  return lines.join("\n").trim();
+  return lines
+    .join("\n")
+    .trim();
 }
 
 
@@ -2518,7 +2566,10 @@ function makeWA(
    MODAL
 ========================================================= */
 
-function openModal(title, body) {
+function openModal(
+  title,
+  body
+) {
 
   el("modalTitle").textContent =
     title;
@@ -2537,7 +2588,6 @@ function closeModal() {
   el("modal").classList.add(
     "hidden"
   );
-
 }
 
 
@@ -2625,20 +2675,20 @@ function customerForm(c = {}) {
             </option>
 
             ${state.suppliers
-              .map(s => `
-
-                <option
-                  value="${s.id}"
-                  ${
-                    c.default_supplier_id === s.id
-                      ? "selected"
-                      : ""
-                  }
-                >
-                  ${esc(s.name)}
-                </option>
-
-              `)
+              .map(
+                s => `
+                  <option
+                    value="${s.id}"
+                    ${
+                      c.default_supplier_id === s.id
+                        ? "selected"
+                        : ""
+                    }
+                  >
+                    ${esc(s.name)}
+                  </option>
+                `
+              )
               .join("")}
 
           </select>
@@ -2659,11 +2709,8 @@ function customerForm(c = {}) {
 
                 <input
                   class="input"
-                  type="text"
+                  type="number"
                   value="${customerRemaining(
-                    c,
-                    "Lunch"
-                  )}/${customerQuotaTotal(
                     c,
                     "Lunch"
                   )}"
@@ -2688,7 +2735,8 @@ function customerForm(c = {}) {
                 >
 
                 <div class="hint">
-                  Isi quota tambahan.
+                  Tambahkan quota baru ke
+                  saldo customer.
                 </div>
 
               </div>
@@ -2702,11 +2750,8 @@ function customerForm(c = {}) {
 
                 <input
                   class="input"
-                  type="text"
+                  type="number"
                   value="${customerRemaining(
-                    c,
-                    "Dinner"
-                  )}/${customerQuotaTotal(
                     c,
                     "Dinner"
                   )}"
@@ -2731,7 +2776,8 @@ function customerForm(c = {}) {
                 >
 
                 <div class="hint">
-                  Isi quota tambahan.
+                  Tambahkan quota baru ke
+                  saldo customer.
                 </div>
 
               </div>
@@ -2820,9 +2866,7 @@ function customerForm(c = {}) {
           <input
             class="input"
             name="notes"
-            value="${esc(
-              c.notes || ""
-            )}"
+            value="${esc(c.notes || "")}"
           >
 
         </div>
@@ -2842,9 +2886,7 @@ function customerForm(c = {}) {
         }
       </button>
 
-
     </form>
-
   `;
 }
 
@@ -2853,11 +2895,16 @@ function customerForm(c = {}) {
    SUPPLIER FORM
 ========================================================= */
 
-function supplierForm(s = {}) {
+function supplierForm(
+  s = {}
+) {
 
   return `
 
-    <form id="supplierForm">
+    <form
+      id="supplierForm"
+      data-id="${s.id || ""}"
+    >
 
       <div class="form-grid">
 
@@ -2957,7 +3004,6 @@ function supplierForm(s = {}) {
       </button>
 
     </form>
-
   `;
 }
 
@@ -2966,7 +3012,9 @@ function supplierForm(s = {}) {
    ORDER FORM
 ========================================================= */
 
-function orderForm(o = {}) {
+function orderForm(
+  o = {}
+) {
 
   return `
 
@@ -2991,20 +3039,20 @@ function orderForm(o = {}) {
           >
 
             ${state.customers
-              .map(c => `
-
-                <option
-                  value="${c.id}"
-                  ${
-                    o.customer_id === c.id
-                      ? "selected"
-                      : ""
-                  }
-                >
-                  ${esc(c.name)}
-                </option>
-
-              `)
+              .map(
+                c => `
+                  <option
+                    value="${c.id}"
+                    ${
+                      o.customer_id === c.id
+                        ? "selected"
+                        : ""
+                    }
+                  >
+                    ${esc(c.name)}
+                  </option>
+                `
+              )
               .join("")}
 
           </select>
@@ -3026,20 +3074,20 @@ function orderForm(o = {}) {
 
             ${state.suppliers
               .filter(s => s.active)
-              .map(s => `
-
-                <option
-                  value="${s.id}"
-                  ${
-                    o.supplier_id === s.id
-                      ? "selected"
-                      : ""
-                  }
-                >
-                  ${esc(s.name)}
-                </option>
-
-              `)
+              .map(
+                s => `
+                  <option
+                    value="${s.id}"
+                    ${
+                      o.supplier_id === s.id
+                        ? "selected"
+                        : ""
+                    }
+                  >
+                    ${esc(s.name)}
+                  </option>
+                `
+              )
               .join("")}
 
           </select>
@@ -3136,8 +3184,7 @@ function orderForm(o = {}) {
               customerPrice(
                 state.customers.find(
                   c =>
-                    c.id ===
-                    o.customer_id
+                    c.id === o.customer_id
                 ),
                 o.meal
               )
@@ -3163,8 +3210,7 @@ function orderForm(o = {}) {
               supplierPrice(
                 state.suppliers.find(
                   s =>
-                    s.id ===
-                    o.supplier_id
+                    s.id === o.supplier_id
                 ),
                 o.meal
               )
@@ -3185,28 +3231,32 @@ function orderForm(o = {}) {
             name="status"
           >
 
-            ${
-              [
-                "Scheduled",
-                "Confirmed",
-                "Delivered",
-                "Cancelled"
-              ]
-                .map(x => `
-
+            ${[
+              "Scheduled",
+              "Confirmed",
+              "Delivered",
+              "Cancelled"
+            ]
+              .map(
+                x => `
                   <option
+                    value="${x}"
                     ${
                       o.status === x
                         ? "selected"
                         : ""
                     }
+                    ${
+                      x === "Delivered"
+                        ? "disabled"
+                        : ""
+                    }
                   >
                     ${x}
                   </option>
-
-                `)
-                .join("")
-            }
+                `
+              )
+              .join("")}
 
           </select>
 
@@ -3222,9 +3272,7 @@ function orderForm(o = {}) {
           <textarea
             class="textarea"
             name="notes"
-          >${esc(
-            o.notes || ""
-          )}</textarea>
+          >${esc(o.notes || "")}</textarea>
 
         </div>
 
@@ -3234,8 +3282,11 @@ function orderForm(o = {}) {
 
       <div class="hint">
 
-        Quota customer dan supplier
-        akan dicek saat save.
+        Quota customer dicek saat membuat
+        schedule.
+
+        Quota customer baru berkurang
+        saat order benar-benar Delivered.
 
       </div>
 
@@ -3248,7 +3299,6 @@ function orderForm(o = {}) {
       </button>
 
     </form>
-
   `;
 }
 
@@ -3279,13 +3329,13 @@ function scheduleForm() {
           >
 
             ${state.customers
-              .map(c => `
-
-                <option value="${c.id}">
-                  ${esc(c.name)}
-                </option>
-
-              `)
+              .map(
+                c => `
+                  <option value="${c.id}">
+                    ${esc(c.name)}
+                  </option>
+                `
+              )
               .join("")}
 
           </select>
@@ -3306,13 +3356,14 @@ function scheduleForm() {
           >
 
             ${state.suppliers
-              .map(s => `
-
-                <option value="${s.id}">
-                  ${esc(s.name)}
-                </option>
-
-              `)
+              .filter(s => s.active)
+              .map(
+                s => `
+                  <option value="${s.id}">
+                    ${esc(s.name)}
+                  </option>
+                `
+              )
               .join("")}
 
           </select>
@@ -3399,45 +3450,52 @@ function scheduleForm() {
 
           <label>
             Hari aktif
+            (untuk recurring)
           </label>
 
           <div class="toolbar">
 
-            ${
-              [
-                "Min",
-                "Sen",
-                "Sel",
-                "Rab",
-                "Kam",
-                "Jum",
-                "Sab"
-              ]
-                .map(
-                  (day, i) => `
+            ${[
+              "0",
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6"
+            ]
+              .map(
+                (d, i) => `
+                  <label>
 
-                    <label>
+                    <input
+                      type="checkbox"
+                      name="days"
+                      value="${d}"
+                      ${
+                        i >= 1 &&
+                        i <= 5
+                          ? "checked"
+                          : ""
+                      }
+                    >
 
-                      <input
-                        type="checkbox"
-                        name="days"
-                        value="${i}"
-                        ${
-                          i >= 1 &&
-                          i <= 5
-                            ? "checked"
-                            : ""
-                        }
-                      >
+                    ${
+                      [
+                        "Min",
+                        "Sen",
+                        "Sel",
+                        "Rab",
+                        "Kam",
+                        "Jum",
+                        "Sab"
+                      ][i]
+                    }
 
-                      ${day}
-
-                    </label>
-
-                  `
-                )
-                .join("")
-            }
+                  </label>
+                `
+              )
+              .join("")}
 
           </div>
 
@@ -3463,8 +3521,12 @@ function scheduleForm() {
 
       <div class="notice">
 
-        Setiap tanggal akan dibuat
-        sebagai order terpisah.
+        Kalau pilih Senin–Jumat dan range
+        seminggu, sistem membuat order
+        terpisah per tanggal.
+
+        Setelah dibuat, setiap tanggal
+        bisa dibatalkan sendiri.
 
       </div>
 
@@ -3474,7 +3536,6 @@ function scheduleForm() {
       </button>
 
     </form>
-
   `;
 }
 
@@ -3496,46 +3557,75 @@ async function saveOrder(
       : null;
 
 
-  const newPortions =
-    Math.max(
-      0,
-      Number(payload.portions) || 0
+  const portions =
+    Number(payload.portions || 0);
+
+
+  if (portions <= 0) {
+    alert(
+      "Jumlah porsi harus lebih dari 0."
     );
 
-
-  const newActive =
-    payload.status !== "Cancelled";
-
-
-  /* =======================================================
-     SUPPLIER QUOTA
-  ======================================================= */
-
-  const otherSupplierOrders =
-    state.orders.filter(o =>
-      o.id !== id &&
-      o.supplier_id ===
-        payload.supplier_id &&
-      o.meal === payload.meal &&
-      o.order_date ===
-        payload.order_date &&
-      o.status !== "Cancelled"
-    );
-
-
-  const reserved =
-    otherSupplierOrders.reduce(
-      (n, o) =>
-        n + Number(o.portions || 0),
-      0
-    );
+    return false;
+  }
 
 
   const supplier =
     state.suppliers.find(
       s =>
-        s.id ===
-        payload.supplier_id
+        s.id === payload.supplier_id
+    );
+
+
+  const customer =
+    state.customers.find(
+      c =>
+        c.id === payload.customer_id
+    );
+
+
+  if (!supplier) {
+    alert(
+      "Supplier tidak ditemukan."
+    );
+
+    return false;
+  }
+
+
+  if (!customer) {
+    alert(
+      "Customer tidak ditemukan."
+    );
+
+    return false;
+  }
+
+
+  /*
+    =========================================
+    SUPPLIER QUOTA
+    =========================================
+  */
+
+  const otherSupplierOrders =
+    state.orders.filter(
+      x =>
+        x.id !== id &&
+        x.supplier_id ===
+          payload.supplier_id &&
+        x.meal === payload.meal &&
+        x.order_date ===
+          payload.order_date &&
+        x.status !== "Cancelled"
+    );
+
+
+  const supplierReserved =
+    otherSupplierOrders.reduce(
+      (n, o) =>
+        n + Number(o.portions || 0),
+      0
     );
 
 
@@ -3547,257 +3637,166 @@ async function saveOrder(
 
 
   if (
-    newActive &&
-    reserved + newPortions >
+    payload.status !== "Cancelled" &&
+    supplierReserved + portions >
       supplierCapacity
   ) {
 
     alert(
-      `Quota supplier ${
-        payload.meal
-      } ${
-        supplier?.name || ""
-      } tidak cukup.\n\n` +
-
-      `Available: ${
-        Math.max(
-          0,
-          supplierCapacity -
-            reserved
-        )
-      } porsi.`
+      `Quota supplier ${payload.meal} ${supplier.name} tidak cukup.\n\n` +
+      `Available: ${Math.max(
+        0,
+        supplierCapacity -
+          supplierReserved
+      )} porsi.`
     );
 
     return false;
   }
 
 
-  /* =======================================================
-     CUSTOMER QUOTA
+  /*
+    =========================================
+    CUSTOMER CURRENT QUOTA
+    =========================================
 
-     Kita hitung perubahan quota:
+    IMPORTANT:
 
-     EDIT ORDER LAMA:
-     + quota order lama
+    Tidak pernah menghitung:
 
-     ORDER BARU:
-     - quota order baru
+    total quota awal
+    -
+    seluruh histori Delivered
 
-     Jadi edit/cancel tidak double count.
-  ======================================================= */
+    Yang dipakai cuma:
 
-  const changes = [];
+    CURRENT BALANCE
+  */
 
-
-  function addChange(
-    customerId,
-    meal,
-    delta
-  ) {
-
-    if (
-      !customerId ||
-      !meal ||
-      !delta
-    ) {
-      return;
-    }
+  const customerField =
+    customerQuotaField(
+      payload.meal
+    );
 
 
-    const key =
-      `${customerId}|${meal}`;
+  const currentCustomerQuota =
+    Number(
+      customer[customerField] || 0
+    );
 
 
-    const found =
-      changes.find(
-        x =>
-          x.key === key
-      );
+  /*
+    Order aktif lain milik customer
+    yang masih reserve.
+
+    Ini untuk mencegah quota yang sama
+    dipakai untuk banyak schedule.
+  */
+
+  const otherCustomerOrders =
+    state.orders.filter(
+      x =>
+        x.id !== id &&
+        x.customer_id ===
+          payload.customer_id &&
+        x.meal === payload.meal &&
+        x.status !== "Cancelled" &&
+        x.status !== "Delivered"
+    );
 
 
-    if (found) {
-
-      found.delta += delta;
-
-    } else {
-
-      changes.push({
-
-        key,
-
-        customerId,
-
-        meal,
-
-        delta
-
-      });
-
-    }
-
-  }
+  const customerReserved =
+    otherCustomerOrders.reduce(
+      (n, o) =>
+        n + Number(o.portions || 0),
+      0
+    );
 
 
-  /* =======================================================
-     KEMBALIKAN QUOTA ORDER LAMA
-  ======================================================= */
+  /*
+    Untuk order baru / edit active,
+    quota yang sudah di-reserve
+    tidak boleh melebihi current balance.
+  */
 
   if (
-    existing &&
-    existing.status !==
-      "Cancelled"
+    payload.status !== "Cancelled" &&
+    payload.status !== "Delivered" &&
+    customerReserved + portions >
+      currentCustomerQuota
   ) {
 
-    addChange(
-      existing.customer_id,
-      existing.meal,
-      Number(
-        existing.portions || 0
-      )
-    );
-
-  }
-
-
-  /* =======================================================
-     POTONG QUOTA ORDER BARU
-  ======================================================= */
-
-  if (newActive) {
-
-    addChange(
-      payload.customer_id,
-      payload.meal,
-      -newPortions
-    );
-
-  }
-
-
-  /* =======================================================
-     VALIDATE CUSTOMER
-  ======================================================= */
-
-  const customerUpdates = [];
-
-
-  for (
-    const change of changes
-  ) {
-
-    const customer =
-      state.customers.find(
-        c =>
-          c.id ===
-          change.customerId
-      );
-
-
-    if (!customer) {
-
-      alert(
-        "Customer tidak ditemukan."
-      );
-
-      return false;
-    }
-
-
-    const field =
-      change.meal === "Lunch"
-        ? "lunch_quota"
-        : "dinner_quota";
-
-
-    const current =
-      Math.max(
+    alert(
+      `Quota customer ${customer.name} untuk ${payload.meal} tidak cukup.\n\n` +
+      `Quota saat ini: ${currentCustomerQuota}\n` +
+      `Sudah di-reserve: ${customerReserved}\n` +
+      `Request baru: ${portions}\n` +
+      `Sisa yang bisa digunakan: ${Math.max(
         0,
-        Number(
-          customer[field] || 0
-        )
-      );
-
-
-    const next =
-      current +
-      change.delta;
-
-
-    if (next < 0) {
-
-      alert(
-        `Quota customer ${
-          customer.name
-        } untuk ${
-          change.meal
-        } tidak cukup.\n\n` +
-
-        `Sisa quota: ${
-          current
-        } porsi.`
-      );
-
-      return false;
-    }
-
-
-    customerUpdates.push({
-
-      customer,
-
-      field,
-
-      next
-
-    });
-
-  }
-
-
-  /* =======================================================
-     UPDATE CUSTOMER QUOTA
-  ======================================================= */
-
-  for (
-    const update
-      of customerUpdates
-  ) {
-
-    const ok =
-      await save(
-        "customers",
-        {
-          [update.field]:
-            update.next
-        },
-        update.customer.id
-      );
-
-
-    if (ok === false) {
-      return false;
-    }
-
-  }
-
-
-  /* =======================================================
-     SAVE ORDER
-  ======================================================= */
-
-  const ok =
-    await save(
-      "orders",
-      {
-        ...payload,
-        updated_at:
-          new Date().toISOString()
-      },
-      id
+        currentCustomerQuota -
+          customerReserved
+      )}`
     );
 
+    return false;
+  }
 
-  return ok !== false;
+
+  /*
+    Jangan izinkan status Delivered
+    lewat form biasa.
+
+    Delivery harus lewat tombol
+    Upload Delivery agar quota
+    benar-benar dikurangi.
+  */
+
+  if (
+    payload.status === "Delivered" &&
+    existing?.status !== "Delivered"
+  ) {
+
+    alert(
+      "Untuk menandai Delivered, gunakan tombol 📸 Deliver dan upload bukti delivery."
+    );
+
+    return false;
+  }
+
+
+  /*
+    Delivered lama tidak diubah
+    dari form biasa.
+  */
+
+  if (
+    existing?.status === "Delivered" &&
+    payload.status !== "Delivered"
+  ) {
+
+    alert(
+      "Order yang sudah Delivered tidak bisa diubah statusnya melalui form."
+    );
+
+    return false;
+  }
+
+
+  /*
+    =========================================
+    SAVE ORDER
+    =========================================
+  */
+
+  return save(
+    "orders",
+    {
+      ...payload,
+      updated_at:
+        new Date().toISOString()
+    },
+    id
+  );
 }
 
 
@@ -3805,7 +3804,7 @@ async function saveOrder(
    BIND PAGE
 ========================================================= */
 
-async function bindPage() {
+function bindPage() {
 
   const search =
     el("search");
@@ -3827,157 +3826,189 @@ async function bindPage() {
   }
 
 
-  const df =
+  const dateFilter =
     el("dateFilter");
 
-  if (df) {
+  if (dateFilter) {
 
-    df.onchange = e => {
+    dateFilter.onchange =
+      e => {
 
-      state.date =
-        e.target.value;
+        state.date =
+          e.target.value;
 
-      render();
+        render();
 
-    };
+      };
 
   }
 
 
-  const sf =
+  const supplierFilter =
     el("supplierFilter");
 
-  if (sf) {
+  if (supplierFilter) {
 
-    sf.onchange = e => {
+    supplierFilter.onchange =
+      e => {
 
-      state.filterSupplier =
-        e.target.value;
+        state.filterSupplier =
+          e.target.value;
 
-      render();
+        render();
 
-    };
+      };
 
   }
 
 
-  const mf =
+  const mealFilter =
     el("mealFilter");
 
-  if (mf) {
+  if (mealFilter) {
 
-    mf.onchange = e => {
+    mealFilter.onchange =
+      e => {
 
-      state.filterMeal =
-        e.target.value;
+        state.filterMeal =
+          e.target.value;
 
-      render();
+        render();
 
-    };
+      };
 
   }
 
 
-  const st =
+  const statusFilter =
     el("statusFilter");
 
-  if (st) {
+  if (statusFilter) {
 
-    st.onchange = e => {
+    statusFilter.onchange =
+      e => {
 
-      state.filterStatus =
-        e.target.value;
+        state.filterStatus =
+          e.target.value;
 
-      render();
+        render();
 
-    };
+      };
 
   }
 
 
-  const qd =
+  const quotaDate =
     el("quotaDate");
 
-  if (qd) {
+  if (quotaDate) {
 
-    qd.onchange = e => {
+    quotaDate.onchange =
+      e => {
 
-      state.date =
-        e.target.value;
+        state.date =
+          e.target.value;
 
-      render();
+        render();
 
-    };
+      };
 
   }
 
 
-  const wd =
+  const waDate =
     el("waDate");
 
-  if (wd) {
+  if (waDate) {
 
-    wd.onchange = e => {
+    waDate.onchange =
+      e => {
 
-      state.date =
-        e.target.value;
+        state.date =
+          e.target.value;
 
-      render();
+        render();
 
-    };
+      };
 
   }
 
 
-  const ws =
+  const waSupplier =
     el("waSupplier");
 
-  if (ws) {
+  if (waSupplier) {
 
-    ws.onchange = e => {
+    waSupplier.onchange =
+      e => {
 
-      state.filterSupplier =
-        e.target.value;
+        state.filterSupplier =
+          e.target.value;
 
-      render();
+        const meal =
+          el("waMeal")?.value || "";
 
-    };
+        const date =
+          el("waDate")?.value ||
+          state.date;
+
+        const preview =
+          el("waPreview");
+
+        if (preview) {
+
+          preview.textContent =
+            makeWA(
+              date,
+              e.target.value,
+              meal
+            );
+
+        }
+
+      };
 
   }
 
 
-  const wm =
+  const waMeal =
     el("waMeal");
 
-  if (wm) {
+  if (waMeal) {
 
-    wm.onchange = e => {
+    waMeal.onchange =
+      e => {
 
-      const date =
-        el("waDate")?.value ||
-        state.date;
+        const date =
+          el("waDate")?.value ||
+          state.date;
 
-      const supplier =
-        el("waSupplier")?.value ||
-        "";
+        const supplier =
+          el("waSupplier")?.value ||
+          "";
 
-      el("waPreview")
-        .textContent =
-          makeWA(
-            date,
-            supplier,
-            e.target.value
-          );
+        const preview =
+          el("waPreview");
 
-    };
+        if (preview) {
+
+          preview.textContent =
+            makeWA(
+              date,
+              supplier,
+              e.target.value
+            );
+
+        }
+
+      };
 
   }
-
 }
 
 
 /* =========================================================
-   CLICK HANDLER
+   GLOBAL CLICK HANDLER
 ========================================================= */
 
 document.addEventListener(
@@ -3986,7 +4017,6 @@ document.addEventListener(
 
     const nav =
       e.target.closest(".nav");
-
 
     if (nav) {
 
@@ -4004,7 +4034,6 @@ document.addEventListener(
         "[data-page-go]"
       );
 
-
     if (go) {
 
       state.page =
@@ -4016,26 +4045,27 @@ document.addEventListener(
     }
 
 
-    const a =
+    const actionButton =
       e.target.closest(
         "[data-action]"
       );
 
-
-    if (!a) {
+    if (!actionButton) {
       return;
     }
 
 
-    const act =
-      a.dataset.action;
+    const action =
+      actionButton.dataset.action;
 
     const id =
-      a.dataset.id;
+      actionButton.dataset.id;
 
+
+    /* ADD CUSTOMER */
 
     if (
-      act ===
+      action ===
       "add-customer"
     ) {
 
@@ -4044,11 +4074,14 @@ document.addEventListener(
         customerForm()
       );
 
+      return;
     }
 
 
+    /* EDIT CUSTOMER */
+
     if (
-      act ===
+      action ===
       "edit-customer"
     ) {
 
@@ -4057,23 +4090,27 @@ document.addEventListener(
           x => x.id === id
         );
 
-
-      if (customer) {
-
-        openModal(
-          "Edit Customer",
-          customerForm(
-            customer
-          )
+      if (!customer) {
+        alert(
+          "Customer tidak ditemukan."
         );
 
+        return;
       }
 
+      openModal(
+        "Edit Customer",
+        customerForm(customer)
+      );
+
+      return;
     }
 
 
+    /* ADD SUPPLIER */
+
     if (
-      act ===
+      action ===
       "add-supplier"
     ) {
 
@@ -4082,11 +4119,14 @@ document.addEventListener(
         supplierForm()
       );
 
+      return;
     }
 
 
+    /* EDIT SUPPLIER */
+
     if (
-      act ===
+      action ===
       "edit-supplier"
     ) {
 
@@ -4095,23 +4135,27 @@ document.addEventListener(
           x => x.id === id
         );
 
-
-      if (supplier) {
-
-        openModal(
-          "Edit Supplier",
-          supplierForm(
-            supplier
-          )
+      if (!supplier) {
+        alert(
+          "Supplier tidak ditemukan."
         );
 
+        return;
       }
 
+      openModal(
+        "Edit Supplier",
+        supplierForm(supplier)
+      );
+
+      return;
     }
 
 
+    /* ADD ORDER */
+
     if (
-      act ===
+      action ===
       "add-order"
     ) {
 
@@ -4120,11 +4164,14 @@ document.addEventListener(
         orderForm()
       );
 
+      return;
     }
 
 
+    /* EDIT ORDER */
+
     if (
-      act ===
+      action ===
       "edit-order"
     ) {
 
@@ -4133,23 +4180,41 @@ document.addEventListener(
           x => x.id === id
         );
 
-
-      if (order) {
-
-        openModal(
-          "Edit Schedule",
-          orderForm(
-            order
-          )
+      if (!order) {
+        alert(
+          "Order tidak ditemukan."
         );
 
+        return;
       }
 
+
+      if (
+        order.status ===
+        "Delivered"
+      ) {
+
+        alert(
+          "Order Delivered tidak bisa diedit."
+        );
+
+        return;
+      }
+
+
+      openModal(
+        "Edit Schedule",
+        orderForm(order)
+      );
+
+      return;
     }
 
 
+    /* CONFIRM */
+
     if (
-      act ===
+      action ===
       "confirm"
     ) {
 
@@ -4158,25 +4223,25 @@ document.addEventListener(
           x => x.id === id
         );
 
+      if (!order) return;
 
-      if (order) {
 
-        await saveOrder(
-          {
-            ...order,
-            status:
-              "Confirmed"
-          },
-          id
-        );
+      await saveOrder(
+        {
+          ...order,
+          status: "Confirmed"
+        },
+        id
+      );
 
-      }
-
+      return;
     }
 
 
+    /* CANCEL */
+
     if (
-      act ===
+      action ===
       "cancel"
     ) {
 
@@ -4185,10 +4250,7 @@ document.addEventListener(
           x => x.id === id
         );
 
-
-      if (!order) {
-        return;
-      }
+      if (!order) return;
 
 
       if (
@@ -4205,73 +4267,155 @@ document.addEventListener(
 
 
       if (
-        confirm(
-          "Cancel order ini? " +
-          "Quota customer akan kembali."
+        !confirm(
+          "Cancel order ini?\n\nSlot supplier akan kembali."
         )
       ) {
 
-        await saveOrder(
-          {
-            ...order,
-            status:
-              "Cancelled"
-          },
-          id
-        );
-
+        return;
       }
 
+
+      await saveOrder(
+        {
+          ...order,
+          status: "Cancelled"
+        },
+        id
+      );
+
+      return;
     }
 
 
+    /* DELIVER */
+
     if (
-      act ===
+      action ===
       "deliver"
     ) {
+
+      const order =
+        state.orders.find(
+          x => x.id === id
+        );
+
+      if (!order) return;
+
+
+      if (
+        order.status !==
+        "Confirmed"
+      ) {
+
+        alert(
+          "Hanya order Confirmed yang bisa di-deliver."
+        );
+
+        return;
+      }
+
+
+      const customer =
+        state.customers.find(
+          c =>
+            c.id ===
+            order.customer_id
+        );
+
+
+      const field =
+        customerQuotaField(
+          order.meal
+        );
+
+
+      const currentQuota =
+        Number(
+          customer?.[field] || 0
+        );
+
+
+      if (
+        currentQuota <
+        Number(order.portions || 0)
+      ) {
+
+        alert(
+          `Quota customer tidak cukup.\n\n` +
+          `Quota sekarang: ${currentQuota}\n` +
+          `Porsi delivery: ${order.portions}`
+        );
+
+        return;
+      }
+
 
       el("deliveryFile")
         .dataset.id = id;
 
       el("deliveryFile").click();
 
+      return;
     }
 
 
+    /* COPY WA */
+
     if (
-      act ===
+      action ===
       "copy-wa"
     ) {
 
-      const d =
+      const date =
         el("waDate")?.value ||
         state.date;
 
-      const s =
+      const supplier =
         el("waSupplier")?.value ||
         "";
 
-      const m =
+      const meal =
         el("waMeal")?.value ||
         "";
 
 
-      navigator.clipboard
-        .writeText(
-          makeWA(d, s, m)
-        )
-        .then(
-          () =>
-            alert(
-              "Copied! Tinggal paste ke WhatsApp."
-            )
+      const text =
+        makeWA(
+          date,
+          supplier,
+          meal
         );
 
+
+      try {
+
+        await navigator
+          .clipboard
+          .writeText(text);
+
+        alert(
+          "Copied! Tinggal paste ke WhatsApp."
+        );
+
+      }
+
+      catch (err) {
+
+        alert(
+          "Gagal copy otomatis. Silakan copy manual."
+        );
+
+      }
+
+      return;
     }
 
 
+    /* QUICK ADD */
+
     if (
-      act ===
+      action ===
       "quickAdd"
     ) {
 
@@ -4280,6 +4424,7 @@ document.addEventListener(
         orderForm()
       );
 
+      return;
     }
 
   }
@@ -4287,620 +4432,383 @@ document.addEventListener(
 
 
 /* =========================================================
-   MODAL CLOSE
+   MODAL EVENTS
 ========================================================= */
 
-el("closeModal").onclick =
-  closeModal;
+if (el("closeModal")) {
+
+  el("closeModal").onclick =
+    closeModal;
+
+}
 
 
-el("modal").addEventListener(
-  "click",
-  e => {
+if (el("modal")) {
 
-    if (
-      e.target.id ===
-      "modal"
-    ) {
+  el("modal").addEventListener(
+    "click",
+    e => {
 
-      closeModal();
+      if (
+        e.target.id ===
+        "modal"
+      ) {
+
+        closeModal();
+
+      }
 
     }
+  );
 
-  }
-);
+}
 
 
 /* =========================================================
-   QUICK ADD
+   QUICK ADD BUTTON
 ========================================================= */
 
-el("quickAddBtn").onclick =
-  () =>
-    openModal(
-      "Add Schedule",
-      orderForm()
-    );
+if (el("quickAddBtn")) {
+
+  el("quickAddBtn").onclick =
+    () =>
+      openModal(
+        "Add Schedule",
+        orderForm()
+      );
+
+}
 
 
 /* =========================================================
    REFRESH
 ========================================================= */
 
-el("refreshBtn").onclick =
-  async () => {
+if (el("refreshBtn")) {
 
-    await loadData();
+  el("refreshBtn").onclick =
+    async () => {
 
-    render();
+      await loadData();
 
-  };
+      render();
+
+    };
+
+}
 
 
 /* =========================================================
-   FORM SUBMIT
+   MODAL SUBMIT
 ========================================================= */
 
-el("modalBody").addEventListener(
-  "submit",
-  async e => {
+if (el("modalBody")) {
 
-    e.preventDefault();
+  el("modalBody").addEventListener(
+    "submit",
+    async e => {
 
+      e.preventDefault();
 
-    const f =
-      e.target;
 
-    const fd =
-      new FormData(f);
+      const form =
+        e.target;
 
+      const fd =
+        new FormData(form);
 
-    /* =====================================================
-       CUSTOMER
-    ===================================================== */
 
-    if (
-      f.id ===
-      "customerForm"
-    ) {
+      /* =====================================================
+         CUSTOMER FORM
+      ===================================================== */
 
-      const id =
-        f.dataset.id ||
-        null;
+      if (
+        form.id ===
+        "customerForm"
+      ) {
 
+        const id =
+          form.dataset.id ||
+          null;
 
-      const existing =
-        id
-          ? state.customers.find(
-              c => c.id === id
-            )
-          : null;
 
-
-      const lunchTopup =
-        Math.max(
-          0,
-          Number(
-            fd.get(
-              "lunch_topup"
-            ) || 0
-          )
-        );
-
-
-      const dinnerTopup =
-        Math.max(
-          0,
-          Number(
-            fd.get(
-              "dinner_topup"
-            ) || 0
-          )
-        );
-
-
-      let lunchQuota;
-      let lunchTotal;
-
-      let dinnerQuota;
-      let dinnerTotal;
-
-
-      /* ==============================================
-         CUSTOMER BARU
-      ============================================== */
-
-      if (!existing) {
-
-        lunchQuota =
-          Math.max(
-            0,
-            Number(
-              fd.get(
-                "lunch_quota"
-              ) || 0
-            )
-          );
-
-
-        lunchTotal =
-          lunchQuota;
-
-
-        dinnerQuota =
-          Math.max(
-            0,
-            Number(
-              fd.get(
-                "dinner_quota"
-              ) || 0
-            )
-          );
-
-
-        dinnerTotal =
-          dinnerQuota;
-
-      }
-
-
-      /* ==============================================
-         CUSTOMER LAMA
-      ============================================== */
-
-      else {
-
-        const currentLunch =
-          Math.max(
-            0,
-            Number(
-              existing.lunch_quota ||
-              0
-            )
-          );
-
-
-        const currentLunchTotal =
-          Math.max(
-            0,
-            Number(
-              existing.lunch_quota_total ??
-              existing.lunch_quota ??
-              0
-            )
-          );
-
-
-        const currentDinner =
-          Math.max(
-            0,
-            Number(
-              existing.dinner_quota ||
-              0
-            )
-          );
-
-
-        const currentDinnerTotal =
-          Math.max(
-            0,
-            Number(
-              existing.dinner_quota_total ??
-              existing.dinner_quota ??
-              0
-            )
-          );
-
-
-        /* ==========================================
-           LUNCH
-
-           Kalau current = 0:
-           topup 10
-           => 10/10
-
-           Kalau current = 3:
-           topup 10
-           => 13/13
-        ========================================== */
-
-        if (
-          lunchTopup > 0
-        ) {
-
-          lunchQuota =
-            currentLunch +
-            lunchTopup;
-
-
-          lunchTotal =
-            currentLunch > 0
-              ? currentLunch +
-                lunchTopup
-              : lunchTopup;
-
-        }
-
-        else {
-
-          lunchQuota =
-            currentLunch;
-
-          lunchTotal =
-            currentLunchTotal;
-
-        }
-
-
-        /* ==========================================
-           DINNER
-        ========================================== */
-
-        if (
-          dinnerTopup > 0
-        ) {
-
-          dinnerQuota =
-            currentDinner +
-            dinnerTopup;
-
-
-          dinnerTotal =
-            currentDinner > 0
-              ? currentDinner +
-                dinnerTopup
-              : dinnerTopup;
-
-        }
-
-        else {
-
-          dinnerQuota =
-            currentDinner;
-
-          dinnerTotal =
-            currentDinnerTotal;
-
-        }
-
-      }
-
-
-      const payload = {
-
-        name:
-          fd.get("name"),
-
-        whatsapp:
-          fd.get("whatsapp"),
-
-        address:
-          fd.get("address"),
-
-        notes:
-          fd.get("notes"),
-
-        default_supplier_id:
-          fd.get(
-            "default_supplier_id"
-          ) || null,
-
-
-        lunch_quota:
-          lunchQuota,
-
-        lunch_quota_total:
-          lunchTotal,
-
-
-        dinner_quota:
-          dinnerQuota,
-
-        dinner_quota_total:
-          dinnerTotal,
-
-
-        lunch_price:
-          Number(
-            fd.get(
-              "lunch_price"
-            ) || 0
-          ),
-
-        dinner_price:
-          Number(
-            fd.get(
-              "dinner_price"
-            ) || 0
-          ),
-
-        active: true
-
-      };
-
-
-      const ok =
-        await save(
-          "customers",
-          payload,
+        const existing =
           id
-        );
+            ? state.customers.find(
+                c => c.id === id
+              )
+            : null;
 
 
-      if (ok !== false) {
-        closeModal();
+        const lunchTopup =
+          Math.max(
+            0,
+            Number(
+              fd.get(
+                "lunch_topup"
+              ) || 0
+            )
+          );
+
+
+        const dinnerTopup =
+          Math.max(
+            0,
+            Number(
+              fd.get(
+                "dinner_topup"
+              ) || 0
+            )
+          );
+
+
+        /*
+          NEW CUSTOMER
+
+          quota langsung dimulai
+          dari angka yang diinput.
+        */
+
+        /*
+          EXISTING CUSTOMER
+
+          quota sekarang +
+          top up.
+
+          TIDAK PERNAH:
+          quota + histori order.
+        */
+
+        const payload = {
+
+          name:
+            fd.get("name"),
+
+          whatsapp:
+            fd.get("whatsapp"),
+
+          address:
+            fd.get("address"),
+
+          notes:
+            fd.get("notes"),
+
+          default_supplier_id:
+            fd.get(
+              "default_supplier_id"
+            ) || null,
+
+
+          lunch_quota:
+            existing
+
+              ? Number(
+                  existing.lunch_quota ||
+                  0
+                ) +
+                lunchTopup
+
+              : Math.max(
+                  0,
+                  Number(
+                    fd.get(
+                      "lunch_quota"
+                    ) || 0
+                  )
+                ),
+
+
+          dinner_quota:
+            existing
+
+              ? Number(
+                  existing.dinner_quota ||
+                  0
+                ) +
+                dinnerTopup
+
+              : Math.max(
+                  0,
+                  Number(
+                    fd.get(
+                      "dinner_quota"
+                    ) || 0
+                  )
+                ),
+
+
+          lunch_price:
+            Math.max(
+              0,
+              Number(
+                fd.get(
+                  "lunch_price"
+                ) || 0
+              )
+            ),
+
+
+          dinner_price:
+            Math.max(
+              0,
+              Number(
+                fd.get(
+                  "dinner_price"
+                ) || 0
+              )
+            ),
+
+
+          active: true
+
+        };
+
+
+        const ok =
+          await save(
+            "customers",
+            payload,
+            id
+          );
+
+
+        if (ok) {
+          closeModal();
+        }
+
+
+        return;
       }
 
-    }
+
+      /* =====================================================
+         SUPPLIER FORM
+      ===================================================== */
+
+      if (
+        form.id ===
+        "supplierForm"
+      ) {
+
+        const id =
+          form.dataset.id ||
+          null;
 
 
-    /* =====================================================
-       SUPPLIER
-    ===================================================== */
+        const payload = {
 
-    if (
-      f.id ===
-      "supplierForm"
-    ) {
+          name:
+            fd.get("name"),
 
-      const payload = {
+          lunch_quota:
+            Math.max(
+              0,
+              Number(
+                fd.get(
+                  "lunch_quota"
+                ) || 0
+              )
+            ),
 
-        name:
-          fd.get("name"),
+          dinner_quota:
+            Math.max(
+              0,
+              Number(
+                fd.get(
+                  "dinner_quota"
+                ) || 0
+              )
+            ),
 
-        lunch_quota:
-          Number(
-            fd.get(
-              "lunch_quota"
-            )
-          ),
+          lunch_buy_price:
+            Math.max(
+              0,
+              Number(
+                fd.get(
+                  "lunch_buy_price"
+                ) || 0
+              )
+            ),
 
-        dinner_quota:
-          Number(
-            fd.get(
-              "dinner_quota"
-            )
-          ),
+          dinner_buy_price:
+            Math.max(
+              0,
+              Number(
+                fd.get(
+                  "dinner_buy_price"
+                ) || 0
+              )
+            ),
 
-        lunch_buy_price:
-          Number(
-            fd.get(
-              "lunch_buy_price"
-            )
-          ),
+          active: true
 
-        dinner_buy_price:
-          Number(
-            fd.get(
-              "dinner_buy_price"
-            )
-          ),
-
-        active: true
-
-      };
-
-
-      const id =
-        state.suppliers.find(
-          x =>
-            x.name ===
-            payload.name
-        )?.id ||
-        null;
+        };
 
 
-      await save(
-        "suppliers",
-        payload,
-        id
-      );
+        const ok =
+          await save(
+            "suppliers",
+            payload,
+            id
+          );
 
 
-      closeModal();
-
-    }
-
-
-    /* =====================================================
-       ORDER
-    ===================================================== */
-
-    if (
-      f.id ===
-      "orderForm"
-    ) {
-
-      const customer =
-        state.customers.find(
-          c =>
-            c.id ===
-            fd.get(
-              "customer_id"
-            )
-        );
+        if (ok) {
+          closeModal();
+        }
 
 
-      const supplier =
-        state.suppliers.find(
-          s =>
-            s.id ===
-            fd.get(
-              "supplier_id"
-            )
-        );
+        return;
+      }
 
 
-      const payload = {
+      /* =====================================================
+         ORDER FORM
+      ===================================================== */
 
-        customer_id:
-          fd.get(
-            "customer_id"
-          ),
+      if (
+        form.id ===
+        "orderForm"
+      ) {
 
-        supplier_id:
-          fd.get(
-            "supplier_id"
-          ),
+        const id =
+          form.dataset.id ||
+          null;
 
-        order_date:
-          fd.get(
-            "order_date"
-          ),
 
-        meal:
-          fd.get(
-            "meal"
-          ),
+        const customer =
+          state.customers.find(
+            c =>
+              c.id ===
+              fd.get("customer_id")
+          );
 
-        portions:
-          Number(
-            fd.get(
-              "portions"
-            )
-          ),
 
-        selling_price:
+        const supplier =
+          state.suppliers.find(
+            s =>
+              s.id ===
+              fd.get("supplier_id")
+          );
+
+
+        const meal =
+          fd.get("meal");
+
+
+        const sellingPrice =
           Number(
             fd.get(
               "selling_price"
             )
-          ) ||
-          customerPrice(
-            customer,
-            fd.get("meal")
-          ),
+          );
 
-        buying_price:
+
+        const buyingPrice =
           Number(
             fd.get(
               "buying_price"
             )
-          ) ||
-          supplierPrice(
-            supplier,
-            fd.get("meal")
-          ),
-
-        status:
-          fd.get(
-            "status"
-          ),
-
-        notes:
-          fd.get(
-            "notes"
-          )
-
-      };
-
-
-      /*
-        INI FIX PENTING:
-
-        Form menyimpan data-id langsung,
-        jadi Edit Order tidak lagi
-        mencari order berdasarkan
-        customer + tanggal + meal.
-      */
-
-      const editId =
-        f.dataset.id ||
-        null;
-
-
-      const ok =
-        await saveOrder(
-          payload,
-          editId
-        );
-
-
-      if (ok) {
-        closeModal();
-      }
-
-    }
-
-
-    /* =====================================================
-       BULK
-    ===================================================== */
-
-    if (
-      f.id ===
-      "bulkForm"
-    ) {
-
-      const days =
-        fd.getAll(
-          "days"
-        );
-
-
-      const start =
-        new Date(
-          fd.get("start") +
-          "T00:00:00"
-        );
-
-
-      const end =
-        new Date(
-          fd.get("end") +
-          "T00:00:00"
-        );
-
-
-      let created = 0;
-
-
-      for (
-        let d =
-          new Date(start);
-
-        d <= end;
-
-        d.setDate(
-          d.getDate() + 1
-        )
-      ) {
-
-        const dow =
-          String(
-            d.getDay()
-          );
-
-
-        if (
-          !days.includes(dow)
-        ) {
-          continue;
-        }
-
-
-        const date =
-          d.toISOString()
-            .slice(0, 10);
-
-
-        const bulkCustomer =
-          state.customers.find(
-            c =>
-              c.id ===
-              fd.get(
-                "customer_id"
-              )
-          );
-
-
-        const bulkSupplier =
-          state.suppliers.find(
-            s =>
-              s.id ===
-              fd.get(
-                "supplier_id"
-              )
           );
 
 
@@ -4917,193 +4825,631 @@ el("modalBody").addEventListener(
             ),
 
           order_date:
-            date,
-
-          meal:
             fd.get(
-              "meal"
+              "order_date"
             ),
 
+          meal,
+
           portions:
-            Number(
-              fd.get(
-                "portions"
+            Math.max(
+              1,
+              Number(
+                fd.get(
+                  "portions"
+                ) || 1
               )
             ),
 
+
           selling_price:
-            customerPrice(
-              bulkCustomer,
-              fd.get("meal")
-            ),
+            sellingPrice > 0
+              ? sellingPrice
+              : customerPrice(
+                  customer,
+                  meal
+                ),
+
 
           buying_price:
-            supplierPrice(
-              bulkSupplier,
-              fd.get("meal")
-            ),
+            buyingPrice > 0
+              ? buyingPrice
+              : supplierPrice(
+                  supplier,
+                  meal
+                ),
+
 
           status:
-            "Scheduled",
+            fd.get("status"),
+
 
           notes:
-            fd.get(
-              "notes"
-            )
+            fd.get("notes")
 
         };
 
 
         const ok =
           await saveOrder(
-            payload
+            payload,
+            id
           );
 
 
         if (ok) {
-          created++;
+          closeModal();
         }
 
+
+        return;
       }
 
 
-      closeModal();
+      /* =====================================================
+         BULK FORM
+      ===================================================== */
+
+      if (
+        form.id ===
+        "bulkForm"
+      ) {
+
+        const days =
+          fd.getAll("days");
 
 
-      alert(
-        `${created} jadwal berhasil dibuat.`
-      );
+        const start =
+          new Date(
+            fd.get("start") +
+            "T00:00:00"
+          );
+
+
+        const end =
+          new Date(
+            fd.get("end") +
+            "T00:00:00"
+          );
+
+
+        if (start > end) {
+
+          alert(
+            "Start date tidak boleh lebih besar dari End date."
+          );
+
+          return;
+        }
+
+
+        let created = 0;
+
+
+        for (
+          let d = new Date(start);
+          d <= end;
+          d.setDate(
+            d.getDate() + 1
+          )
+        ) {
+
+          const dow =
+            String(
+              d.getDay()
+            );
+
+
+          if (
+            !days.includes(dow)
+          ) {
+            continue;
+          }
+
+
+          /*
+            Hindari masalah timezone
+            saat membuat tanggal bulk.
+          */
+
+          const year =
+            d.getFullYear();
+
+          const month =
+            String(
+              d.getMonth() + 1
+            ).padStart(2, "0");
+
+          const day =
+            String(
+              d.getDate()
+            ).padStart(2, "0");
+
+
+          const date =
+            `${year}-${month}-${day}`;
+
+
+          const bulkCustomer =
+            state.customers.find(
+              c =>
+                c.id ===
+                fd.get(
+                  "customer_id"
+                )
+            );
+
+
+          const bulkSupplier =
+            state.suppliers.find(
+              s =>
+                s.id ===
+                fd.get(
+                  "supplier_id"
+                )
+            );
+
+
+          const meal =
+            fd.get("meal");
+
+
+          const payload = {
+
+            customer_id:
+              fd.get(
+                "customer_id"
+              ),
+
+            supplier_id:
+              fd.get(
+                "supplier_id"
+              ),
+
+            order_date:
+              date,
+
+            meal,
+
+            portions:
+              Math.max(
+                1,
+                Number(
+                  fd.get(
+                    "portions"
+                  ) || 1
+                )
+              ),
+
+            selling_price:
+              customerPrice(
+                bulkCustomer,
+                meal
+              ),
+
+            buying_price:
+              supplierPrice(
+                bulkSupplier,
+                meal
+              ),
+
+            status:
+              "Scheduled",
+
+            notes:
+              fd.get("notes")
+
+          };
+
+
+          const ok =
+            await saveOrder(
+              payload
+            );
+
+
+          if (ok) {
+            created++;
+          }
+
+        }
+
+
+        closeModal();
+
+
+        alert(
+          `${created} jadwal berhasil dibuat.`
+        );
+
+
+        return;
+      }
 
     }
+  );
 
-  }
-);
+}
 
 
 /* =========================================================
-   DELIVERY UPLOAD
+   DELIVERY FILE UPLOAD
 ========================================================= */
 
-el("deliveryFile").addEventListener(
-  "change",
-  async e => {
+if (el("deliveryFile")) {
 
-    const file =
-      e.target.files[0];
+  el("deliveryFile").addEventListener(
+    "change",
+    async e => {
 
-    const id =
-      e.target.dataset.id;
+      const file =
+        e.target.files[0];
 
-
-    if (!file) {
-      return;
-    }
+      const id =
+        e.target.dataset.id;
 
 
-    const o =
-      state.orders.find(
-        x => x.id === id
-      );
+      if (!file) {
+        return;
+      }
 
 
-    if (!o) {
-      return;
-    }
-
-
-    /* ==============================================
-       DEMO
-    ============================================== */
-
-    if (!sb) {
-
-      o.status =
-        "Delivered";
-
-      o.delivered_at =
-        new Date()
-          .toISOString();
-
-      o.delivery_photo_path =
-        URL.createObjectURL(
-          file
+      const order =
+        state.orders.find(
+          x => x.id === id
         );
 
+
+      if (!order) {
+
+        alert(
+          "Order tidak ditemukan."
+        );
+
+        e.target.value = "";
+
+        return;
+      }
+
+
+      if (
+        order.status !==
+        "Confirmed"
+      ) {
+
+        alert(
+          "Order harus berstatus Confirmed."
+        );
+
+        e.target.value = "";
+
+        return;
+      }
+
+
+      const customer =
+        state.customers.find(
+          c =>
+            c.id ===
+            order.customer_id
+        );
+
+
+      if (!customer) {
+
+        alert(
+          "Customer tidak ditemukan."
+        );
+
+        e.target.value = "";
+
+        return;
+      }
+
+
+      const quotaField =
+        customerQuotaField(
+          order.meal
+        );
+
+
+      const currentQuota =
+        Number(
+          customer[quotaField] || 0
+        );
+
+
+      const portions =
+        Number(
+          order.portions || 0
+        );
+
+
+      /*
+        FINAL QUOTA CHECK
+
+        Sebelum delivery:
+        current quota harus cukup.
+      */
+
+      if (
+        currentQuota <
+        portions
+      ) {
+
+        alert(
+          `Quota customer tidak cukup.\n\n` +
+          `Customer: ${customer.name}\n` +
+          `Meal: ${order.meal}\n` +
+          `Quota sekarang: ${currentQuota}\n` +
+          `Porsi: ${portions}`
+        );
+
+        e.target.value = "";
+
+        return;
+      }
+
+
+      /*
+        =========================================
+        DEMO MODE
+        =========================================
+      */
+
+      if (!sb) {
+
+        const newQuota =
+          currentQuota -
+          portions;
+
+
+        /*
+          Update order
+        */
+
+        order.status =
+          "Delivered";
+
+        order.delivered_at =
+          new Date().toISOString();
+
+        order.delivery_photo_path =
+          URL.createObjectURL(
+            file
+          );
+
+
+        /*
+          Update CURRENT QUOTA
+        */
+
+        customer[quotaField] =
+          newQuota;
+
+
+        render();
+
+
+        alert(
+          `Delivered berhasil.\n\n` +
+          `Quota ${order.meal} customer ${customer.name}: ` +
+          `${currentQuota} → ${newQuota}`
+        );
+
+
+        e.target.value = "";
+
+        return;
+      }
+
+
+      /*
+        =========================================
+        SUPABASE
+        =========================================
+      */
+
+      const extension =
+        file.name
+          .split(".")
+          .pop()
+          ?.toLowerCase() ||
+        "jpg";
+
+
+      const path =
+        `${order.order_date}/` +
+        `${order.id}-` +
+        `${Date.now()}.` +
+        extension;
+
+
+      /*
+        Upload photo
+      */
+
+      const upload =
+        await sb
+          .storage
+          .from(
+            "delivery-proofs"
+          )
+          .upload(
+            path,
+            file,
+            {
+              upsert: false
+            }
+          );
+
+
+      if (upload.error) {
+
+        alert(
+          upload.error.message
+        );
+
+        e.target.value = "";
+
+        return;
+      }
+
+
+      /*
+        =========================================
+        UPDATE CUSTOMER QUOTA FIRST
+        =========================================
+      */
+
+      const newQuota =
+        currentQuota -
+        portions;
+
+
+      const quotaUpdate =
+        await sb
+          .from("customers")
+          .update({
+            [quotaField]:
+              newQuota
+          })
+          .eq(
+            "id",
+            customer.id
+          );
+
+
+      /*
+        Kalau update quota gagal,
+        jangan lanjut tandai Delivered.
+      */
+
+      if (
+        quotaUpdate.error
+      ) {
+
+        /*
+          Coba hapus photo yang
+          sudah ter-upload supaya
+          tidak meninggalkan file yatim.
+        */
+
+        await sb
+          .storage
+          .from(
+            "delivery-proofs"
+          )
+          .remove([
+            path
+          ]);
+
+
+        alert(
+          "Quota customer gagal diperbarui: " +
+          quotaUpdate.error.message
+        );
+
+        e.target.value = "";
+
+        return;
+      }
+
+
+      /*
+        =========================================
+        UPDATE ORDER
+        =========================================
+      */
+
+      const orderUpdate =
+        await sb
+          .from("orders")
+          .update({
+
+            status:
+              "Delivered",
+
+            delivery_photo_path:
+              path,
+
+            delivered_at:
+              new Date().toISOString(),
+
+            updated_at:
+              new Date().toISOString()
+
+          })
+          .eq(
+            "id",
+            order.id
+          );
+
+
+      /*
+        Kalau order gagal di-update,
+        restore quota customer.
+      */
+
+      if (
+        orderUpdate.error
+      ) {
+
+        await sb
+          .from("customers")
+          .update({
+            [quotaField]:
+              currentQuota
+          })
+          .eq(
+            "id",
+            customer.id
+          );
+
+
+        await sb
+          .storage
+          .from(
+            "delivery-proofs"
+          )
+          .remove([
+            path
+          ]);
+
+
+        alert(
+          "Order gagal diubah menjadi Delivered: " +
+          orderUpdate.error.message
+        );
+
+        e.target.value = "";
+
+        return;
+      }
+
+
+      /*
+        Semua berhasil.
+      */
+
+      await loadData();
 
       render();
 
 
       alert(
-        "Demo: delivery tersimpan."
+        `Delivered berhasil.\n\n` +
+        `Quota ${order.meal} customer ${customer.name}: ` +
+        `${currentQuota} → ${newQuota}`
       );
 
 
       e.target.value = "";
 
-      return;
     }
+  );
 
-
-    /* ==============================================
-       SUPABASE STORAGE
-    ============================================== */
-
-    const path =
-      `${o.order_date}/` +
-      `${o.id}-${Date.now()}.` +
-      `${file.name
-        .split(".")
-        .pop()}`;
-
-
-    const up =
-      await sb.storage
-        .from(
-          "delivery-proofs"
-        )
-        .upload(
-          path,
-          file,
-          {
-            upsert: false
-          }
-        );
-
-
-    if (up.error) {
-
-      alert(
-        up.error.message
-      );
-
-      return;
-    }
-
-
-    await saveOrder(
-      {
-        ...o,
-        status:
-          "Delivered",
-        delivery_photo_path:
-          path,
-        delivered_at:
-          new Date()
-            .toISOString()
-      },
-      id
-    );
-
-
-    alert(
-      "Delivered + foto tersimpan."
-    );
-
-
-    e.target.value = "";
-
-  }
-);
+}
 
 
 /* =========================================================
@@ -5117,4 +5463,3 @@ el("deliveryFile").addEventListener(
   render();
 
 })();
-
