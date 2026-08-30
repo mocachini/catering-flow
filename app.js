@@ -682,17 +682,98 @@ function makeWA(date,supplierId,meal){
 function openModal(title,body){el("modalTitle").textContent=title;el("modalBody").innerHTML=body;el("modal").classList.remove("hidden")}
 function closeModal(){el("modal").classList.add("hidden")}
 function customerForm(c={}){
-  return `<form id="customerForm"><div class="form-grid">
-  <div class="field"><label>Nama *</label><input class="input" name="name" required value="${esc(c.name||"")}"></div>
-  <div class="field"><label>WhatsApp</label><input class="input" name="whatsapp" value="${esc(c.whatsapp||"")}"></div>
-  <div class="field full-row"><label>Alamat *</label><textarea class="textarea" name="address" required>${esc(c.address||"")}</textarea></div>
-  <div class="field"><label>Default Supplier</label><select class="select" name="default_supplier_id"><option value="">-</option>${state.suppliers.map(s=>`<option value="${s.id}" ${c.default_supplier_id===s.id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></div>
-  <div class="field"><label>Lunch quota</label><input class="input" type="number" min="0" name="lunch_quota" value="${c.lunch_quota??0}"></div>
-  <div class="field"><label>Dinner quota</label><input class="input" type="number" min="0" name="dinner_quota" value="${c.dinner_quota??0}"></div>
-  <div class="field"><label>Harga Lunch / porsi</label><input class="input" type="number" min="0" name="lunch_price" value="${c.lunch_price??0}"></div>
-  <div class="field"><label>Harga Dinner / porsi</label><input class="input" type="number" min="0" name="dinner_price" value="${c.dinner_price??0}"></div>
-  <div class="field full-row"><label>Notes</label><input class="input" name="notes" value="${esc(c.notes||"")}"></div></div>
-  <button class="primary" style="margin-top:15px">Save Customer</button></form>`;
+  const isEdit = !!c.id;
+
+  return `<form id="customerForm" data-id="${c.id||""}">
+    <div class="form-grid">
+
+      <div class="field">
+        <label>Nama *</label>
+        <input class="input" name="name" required value="${esc(c.name||"")}">
+      </div>
+
+      <div class="field">
+        <label>WhatsApp</label>
+        <input class="input" name="whatsapp" value="${esc(c.whatsapp||"")}">
+      </div>
+
+      <div class="field full-row">
+        <label>Alamat *</label>
+        <textarea class="textarea" name="address" required>${esc(c.address||"")}</textarea>
+      </div>
+
+      <div class="field">
+        <label>Default Supplier</label>
+        <select class="select" name="default_supplier_id">
+          <option value="">-</option>
+          ${state.suppliers.map(s=>`
+            <option value="${s.id}" ${c.default_supplier_id===s.id?"selected":""}>
+              ${esc(s.name)}
+            </option>
+          `).join("")}
+        </select>
+      </div>
+
+      ${
+        isEdit
+        ? `
+          <div class="field">
+            <label>Lunch Quota Saat Ini</label>
+            <input class="input" type="number" value="${customerRemaining(c,"Lunch")}" disabled>
+          </div>
+
+          <div class="field">
+            <label>Top Up Lunch</label>
+            <input class="input" type="number" min="0" name="lunch_topup" value="0">
+            <div class="hint">Tambahkan quota baru ke saldo customer.</div>
+          </div>
+
+          <div class="field">
+            <label>Dinner Quota Saat Ini</label>
+            <input class="input" type="number" value="${customerRemaining(c,"Dinner")}" disabled>
+          </div>
+
+          <div class="field">
+            <label>Top Up Dinner</label>
+            <input class="input" type="number" min="0" name="dinner_topup" value="0">
+            <div class="hint">Tambahkan quota baru ke saldo customer.</div>
+          </div>
+        `
+        : `
+          <div class="field">
+            <label>Lunch Quota</label>
+            <input class="input" type="number" min="0" name="lunch_quota" value="0">
+          </div>
+
+          <div class="field">
+            <label>Dinner Quota</label>
+            <input class="input" type="number" min="0" name="dinner_quota" value="0">
+          </div>
+        `
+      }
+
+      <div class="field">
+        <label>Harga Lunch / porsi</label>
+        <input class="input" type="number" min="0" name="lunch_price" value="${c.lunch_price??0}">
+      </div>
+
+      <div class="field">
+        <label>Harga Dinner / porsi</label>
+        <input class="input" type="number" min="0" name="dinner_price" value="${c.dinner_price??0}">
+      </div>
+
+      <div class="field full-row">
+        <label>Notes</label>
+        <input class="input" name="notes" value="${esc(c.notes||"")}">
+      </div>
+
+    </div>
+
+    <button class="primary" style="margin-top:15px">
+      ${isEdit ? "Save & Update Customer" : "Save Customer"}
+    </button>
+  </form>`;
+}
 }
 function supplierForm(s={}){
   return `<form id="supplierForm"><div class="form-grid">
@@ -793,10 +874,39 @@ el("refreshBtn").onclick=async()=>{await loadData();render()};
 el("modalBody").addEventListener("submit",async e=>{
   e.preventDefault(); const f=e.target; const fd=new FormData(f);
   if(f.id==="customerForm"){
-    const payload={name:fd.get("name"),whatsapp:fd.get("whatsapp"),address:fd.get("address"),notes:fd.get("notes"),default_supplier_id:fd.get("default_supplier_id")||null,lunch_quota:+fd.get("lunch_quota"),dinner_quota:+fd.get("dinner_quota"),lunch_price:+fd.get("lunch_price"),dinner_price:+fd.get("dinner_price"),active:true};
-    const id=state.customers.find(x=>x.name===payload.name && x.address===payload.address)?.id;
-    await save("customers",payload,id);closeModal();
-  }
+
+  const id = f.dataset.id || null;
+
+  const existing = id
+    ? state.customers.find(c => c.id === id)
+    : null;
+
+  const lunchTopup = Number(fd.get("lunch_topup") || 0);
+  const dinnerTopup = Number(fd.get("dinner_topup") || 0);
+
+  const payload = {
+    name: fd.get("name"),
+    whatsapp: fd.get("whatsapp"),
+    address: fd.get("address"),
+    notes: fd.get("notes"),
+    default_supplier_id: fd.get("default_supplier_id") || null,
+
+    lunch_quota: existing
+      ? Number(existing.lunch_quota || 0) + lunchTopup
+      : Number(fd.get("lunch_quota") || 0),
+
+    dinner_quota: existing
+      ? Number(existing.dinner_quota || 0) + dinnerTopup
+      : Number(fd.get("dinner_quota") || 0),
+
+    lunch_price: Number(fd.get("lunch_price") || 0),
+    dinner_price: Number(fd.get("dinner_price") || 0),
+    active: true
+  };
+
+  await save("customers", payload, id);
+  closeModal();
+}
   if(f.id==="supplierForm"){
     const payload={name:fd.get("name"),lunch_quota:+fd.get("lunch_quota"),dinner_quota:+fd.get("dinner_quota"),lunch_buy_price:+fd.get("lunch_buy_price"),dinner_buy_price:+fd.get("dinner_buy_price"),active:true};
     const id=state.suppliers.find(x=>x.name===payload.name)?.id;
