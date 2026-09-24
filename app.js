@@ -3273,58 +3273,6 @@ function orderForm(
         <div class="field">
 
           <label>
-            Harga jual / porsi
-          </label>
-
-          <input
-            class="input"
-            type="number"
-            min="0"
-            name="selling_price"
-            value="${
-              o.selling_price ??
-              customerPrice(
-                state.customers.find(
-                  c =>
-                    c.id === o.customer_id
-                ),
-                o.meal
-              )
-            }"
-          >
-
-        </div>
-
-
-        <div class="field">
-
-          <label>
-            Harga beli / porsi
-          </label>
-
-          <input
-            class="input"
-            type="number"
-            min="0"
-            name="buying_price"
-            value="${
-              o.buying_price ??
-              supplierPrice(
-                state.suppliers.find(
-                  s =>
-                    s.id === o.supplier_id
-                ),
-                o.meal
-              )
-            }"
-          >
-
-        </div>
-
-
-        <div class="field">
-
-          <label>
             Status
           </label>
 
@@ -4889,22 +4837,6 @@ if (el("modalBody")) {
           fd.get("meal");
 
 
-        const sellingPrice =
-          Number(
-            fd.get(
-              "selling_price"
-            )
-          );
-
-
-        const buyingPrice =
-          Number(
-            fd.get(
-              "buying_price"
-            )
-          );
-
-
         const payload = {
 
           customer_id:
@@ -4936,21 +4868,16 @@ if (el("modalBody")) {
 
 
           selling_price:
-            sellingPrice > 0
-              ? sellingPrice
-              : customerPrice(
-                  customer,
-                  meal
-                ),
-
-
+            customerPrice(
+              customer,
+              meal
+            ),
+          
           buying_price:
-            buyingPrice > 0
-              ? buyingPrice
-              : supplierPrice(
-                  supplier,
-                  meal
-                ),
+            supplierPrice(
+              supplier,
+              meal
+            ),
 
 
           status:
@@ -5114,17 +5041,8 @@ if (el("modalBody")) {
                 )
               ),
 
-            selling_price:
-              customerPrice(
-                bulkCustomer,
-                meal
-              ),
-
-            buying_price:
-              supplierPrice(
-                bulkSupplier,
-                meal
-              ),
+            selling_price: customerPrice(bulkCustomer, meal),
+            buying_price: supplierPrice(bulkSupplier, meal),
 
             status:
               "Scheduled",
