@@ -4743,42 +4743,8 @@ if (el("modalBody")) {
             ) || null,
 
 
-          lunch_quota:
-            newLunchQuota,
-
-              ? Number(
-                  existing.lunch_quota ||
-                  0
-                ) +
-                lunchTopup
-
-              : Math.max(
-                  0,
-                  Number(
-                    fd.get(
-                      "lunch_quota"
-                    ) || 0
-                  )
-                ),
-
-
-          dinner_quota:
-            newDinnerQuota,
-
-              ? Number(
-                  existing.dinner_quota ||
-                  0
-                ) +
-                dinnerTopup
-
-              : Math.max(
-                  0,
-                  Number(
-                    fd.get(
-                      "dinner_quota"
-                    ) || 0
-                  )
-                ),
+          lunch_quota: newLunchQuota,
+          dinner_quota: newDinnerQuota,
 
 
           lunch_price:
