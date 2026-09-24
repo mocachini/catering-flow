@@ -1393,6 +1393,102 @@ function tableWrap(rows, heads) {
   `;
 }
 
+async function removeCustomer(id) {
+
+  const customer = state.customers.find(
+    c => c.id === id
+  );
+
+  if (!customer) {
+    alert("Customer tidak ditemukan.");
+    return;
+  }
+
+  const confirmed = confirm(
+    `Hapus customer "${customer.name}"?`
+  );
+
+  if (!confirmed) return;
+
+
+  const customerOrders = state.orders.filter(
+    o => o.customer_id === id
+  );
+
+
+  // Jika customer belum pernah punya order,
+  // customer bisa dihapus permanen.
+  if (customerOrders.length === 0) {
+
+    if (!hasSupabase) {
+
+      state.customers =
+        state.customers.filter(
+          c => c.id !== id
+        );
+
+    } else {
+
+      const { error } =
+        await sb
+          .from("customers")
+          .delete()
+          .eq("id", id);
+
+      if (error) {
+        alert(
+          "Gagal menghapus customer: " +
+          error.message
+        );
+        return;
+      }
+
+      state.customers =
+        state.customers.filter(
+          c => c.id !== id
+        );
+    }
+
+  } else {
+
+    // Jika sudah punya order,
+    // jangan hard delete karena order
+    // masih mereferensikan customer.
+    if (!hasSupabase) {
+
+      state.customers =
+        state.customers.filter(
+          c => c.id !== id
+        );
+
+    } else {
+
+      const { error } =
+        await sb
+          .from("customers")
+          .update({
+            active: false
+          })
+          .eq("id", id);
+
+      if (error) {
+        alert(
+          "Gagal menonaktifkan customer: " +
+          error.message
+        );
+        return;
+      }
+
+      state.customers =
+        state.customers.filter(
+          c => c.id !== id
+        );
+    }
+  }
+
+  render();
+}
+
 
 /* =========================================================
    CUSTOMERS PAGE
@@ -1570,12 +1666,20 @@ function customersPage() {
 
               <td>
 
-                <button
-                  class="mini"
-                  data-action="edit-customer"
-                  data-id="${c.id}"
+                <button 
+                  class="mini" 
+                  data-action="edit-customer" 
+                  data-id="${c.id}" 
                 >
                   Edit
+                </button>
+                
+                <button 
+                  class="mini danger" 
+                  data-action="delete-customer" 
+                  data-id="${c.id}"
+                >
+                  Delete
                 </button>
 
               </td>
@@ -4103,6 +4207,18 @@ document.addEventListener(
         customerForm(customer)
       );
 
+      return;
+    }
+
+    /* DELETE CUSTOMER */
+
+    if (
+      action ===
+      "delete-customer"
+    ) {
+    
+      await removeCustomer(id);
+    
       return;
     }
 
