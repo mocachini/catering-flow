@@ -312,3 +312,146 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}.sidebar{positio
     padding: 8px 10px;
   }
 }
+
+/* ================================
+   MOBILE CUSTOMER - NO HORIZONTAL SCROLL
+================================ */
+
+@media (max-width: 768px) {
+
+  /* Customer table jadi card/list, bukan tabel lebar */
+  #customerTable {
+    width: 100%;
+    min-width: 0 !important;
+    font-size: 14px;
+  }
+
+  #customerTable thead {
+    display: none;
+  }
+
+  #customerTable,
+  #customerTable tbody,
+  #customerTable tr,
+  #customerTable td {
+    display: block;
+    width: 100%;
+  }
+
+  #customerTable tr {
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  #customerTable td {
+    border: none;
+    padding: 7px 4px;
+    font-size: 15px;
+    line-height: 1.4;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  #customerTable td::before {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 2px;
+    color: #6b7280;
+    font-size: 12px;
+  }
+
+  #customerTable td:nth-child(1)::before {
+    content: "Customer";
+  }
+
+  #customerTable td:nth-child(2)::before {
+    content: "Lunch Quota";
+  }
+
+  #customerTable td:nth-child(3)::before {
+    content: "Dinner Quota";
+  }
+
+  #customerTable td:nth-child(4)::before {
+    content: "Lunch Price";
+  }
+
+  #customerTable td:nth-child(5)::before {
+    content: "Dinner Price";
+  }
+
+  #customerTable td:last-child::before {
+    content: "Action";
+  }
+
+
+  /* Semua tulisan mobile dibesarkan */
+  body {
+    font-size: 15px;
+  }
+
+  .content {
+    padding: 14px;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .panel h2,
+  .panel h3 {
+    font-size: 18px;
+  }
+
+  .field label {
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .input,
+  .select,
+  .textarea,
+  .toolbar input,
+  .toolbar select {
+    min-height: 48px;
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+
+  button {
+    font-size: 14px;
+  }
+
+  .mini {
+    font-size: 13px;
+  }
+
+  /* Toolbar Customer jangan bikin melebar */
+  .toolbar {
+    width: 100%;
+  }
+
+  .toolbar input,
+  .toolbar select {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Hilangkan horizontal scroll halaman */
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .main,
+  .content,
+  .panel {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
