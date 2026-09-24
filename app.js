@@ -2833,14 +2833,13 @@ function customerForm(c = {}) {
                 <input
                   class="input"
                   type="number"
-                  min="0"
                   name="lunch_topup"
                   value="0"
                 >
-
+                
                 <div class="hint">
-                  Tambahkan quota baru ke
-                  saldo customer.
+                  Gunakan angka positif untuk menambah quota
+                  atau angka negatif untuk mengurangi quota.
                 </div>
 
               </div>
@@ -2874,16 +2873,15 @@ function customerForm(c = {}) {
                 <input
                   class="input"
                   type="number"
-                  min="0"
                   name="dinner_topup"
                   value="0"
                 >
-
+                
                 <div class="hint">
-                  Tambahkan quota baru ke
-                  saldo customer.
+                  Gunakan angka positif untuk menambah quota
+                  atau angka negatif untuk mengurangi quota.
                 </div>
-
+                
               </div>
 
             `
@@ -4657,26 +4655,19 @@ if (el("modalBody")) {
 
 
         const lunchTopup =
-          Math.max(
-            0,
-            Number(
-              fd.get(
-                "lunch_topup"
-              ) || 0
-            )
+          Number(
+            fd.get(
+              "lunch_topup"
+            ) || 0
           );
-
-
+        
+        
         const dinnerTopup =
-          Math.max(
-            0,
-            Number(
-              fd.get(
-                "dinner_topup"
-              ) || 0
-            )
+          Number(
+            fd.get(
+              "dinner_topup"
+            ) || 0
           );
-
 
         /*
           NEW CUSTOMER
@@ -4694,6 +4685,43 @@ if (el("modalBody")) {
           TIDAK PERNAH:
           quota + histori order.
         */
+
+        const newLunchQuota =
+          existing
+            ? Number(existing.lunch_quota || 0) + lunchTopup
+            : Math.max(
+                0,
+                Number(
+                  fd.get("lunch_quota") || 0
+                )
+              );
+        
+        
+        const newDinnerQuota =
+          existing
+            ? Number(existing.dinner_quota || 0) + dinnerTopup
+            : Math.max(
+                0,
+                Number(
+                  fd.get("dinner_quota") || 0
+                )
+              );
+        
+        
+        if (newLunchQuota < 0) {
+          alert(
+            "Lunch quota tidak boleh kurang dari 0."
+          );
+          return;
+        }
+        
+        
+        if (newDinnerQuota < 0) {
+          alert(
+            "Dinner quota tidak boleh kurang dari 0."
+          );
+          return;
+        }
 
         const payload = {
 
@@ -4716,7 +4744,7 @@ if (el("modalBody")) {
 
 
           lunch_quota:
-            existing
+            newLunchQuota,
 
               ? Number(
                   existing.lunch_quota ||
@@ -4735,7 +4763,7 @@ if (el("modalBody")) {
 
 
           dinner_quota:
-            existing
+            newDinnerQuota,
 
               ? Number(
                   existing.dinner_quota ||
