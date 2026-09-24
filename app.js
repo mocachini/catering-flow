@@ -4654,71 +4654,54 @@ if (el("modalBody")) {
             : null;
 
 
-        const lunchTopup =
-          Number(
-            fd.get(
-              "lunch_topup"
-            ) || 0
-          );
+        const lunchTopup = Number(
+          fd.get("lunch_topup") || 0
+        );
         
+        const dinnerTopup = Number(
+          fd.get("dinner_topup") || 0
+        );
         
-        const dinnerTopup =
-          Number(
-            fd.get(
-              "dinner_topup"
-            ) || 0
-          );
-
         /*
-          NEW CUSTOMER
-
-          quota langsung dimulai
-          dari angka yang diinput.
+          CUSTOMER BARU
+          Quota dimulai dari angka yang diinput.
+        
+          CUSTOMER LAMA
+          Quota saat ini + top up.
         */
-
-        /*
-          EXISTING CUSTOMER
-
-          quota sekarang +
-          top up.
-
-          TIDAK PERNAH:
-          quota + histori order.
-        */
-
+        
+        const currentLunchQuota = existing
+          ? Number(existing.lunch_quota || 0)
+          : Number(fd.get("lunch_quota") || 0);
+        
+        const currentDinnerQuota = existing
+          ? Number(existing.dinner_quota || 0)
+          : Number(fd.get("dinner_quota") || 0);
+        
         const newLunchQuota =
-          existing
-            ? Number(existing.lunch_quota || 0) + lunchTopup
-            : Math.max(
-                0,
-                Number(
-                  fd.get("lunch_quota") || 0
-                )
-              );
-        
+          currentLunchQuota + lunchTopup;
         
         const newDinnerQuota =
-          existing
-            ? Number(existing.dinner_quota || 0) + dinnerTopup
-            : Math.max(
-                0,
-                Number(
-                  fd.get("dinner_quota") || 0
-                )
-              );
+          currentDinnerQuota + dinnerTopup;
         
         
-        if (newLunchQuota < 0) {
+        if (!Number.isFinite(newLunchQuota) || newLunchQuota < 0) {
           alert(
-            "Lunch quota tidak boleh kurang dari 0."
+            `Lunch quota tidak boleh kurang dari 0.\n\n` +
+            `Quota saat ini: ${currentLunchQuota}\n` +
+            `Perubahan: ${lunchTopup}\n` +
+            `Hasil: ${newLunchQuota}`
           );
           return;
         }
         
         
-        if (newDinnerQuota < 0) {
+        if (!Number.isFinite(newDinnerQuota) || newDinnerQuota < 0) {
           alert(
-            "Dinner quota tidak boleh kurang dari 0."
+            `Dinner quota tidak boleh kurang dari 0.\n\n` +
+            `Quota saat ini: ${currentDinnerQuota}\n` +
+            `Perubahan: ${dinnerTopup}\n` +
+            `Hasil: ${newDinnerQuota}`
           );
           return;
         }
