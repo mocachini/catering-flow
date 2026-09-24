@@ -1544,7 +1544,7 @@ function customersPage() {
 
       </div>
 
-
+    <div class="customer-table-wrap">
       ${tableWrap(
 
         data
@@ -1704,6 +1704,7 @@ function customersPage() {
       )}
 
     </div>
+  </div>
   `;
 }
 
