@@ -63,3 +63,252 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}.sidebar{positio
   }
 
 }
+
+/* ================================
+   MOBILE FRIENDLY
+================================ */
+
+@media (max-width: 768px) {
+
+  body {
+    overflow-x: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: 100%;
+    height: 68px;
+    padding: 6px 8px;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+    gap: 4px;
+    z-index: 50;
+  }
+
+  .brand,
+  .sidebar-foot {
+    display: none;
+  }
+
+  .nav {
+    flex: 1;
+    min-width: 0;
+    height: 54px;
+    padding: 6px 3px;
+    text-align: center;
+    font-size: 10px;
+    line-height: 1.2;
+    border-radius: 8px;
+  }
+
+  /* Main */
+  .main {
+    margin-left: 0;
+    padding-bottom: 76px;
+  }
+
+  /* Topbar */
+  .topbar {
+    height: auto;
+    min-height: 76px;
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+  }
+
+  .topbar p {
+    font-size: 12px;
+  }
+
+  .top-actions {
+    gap: 6px;
+  }
+
+  .top-actions span {
+    display: none;
+  }
+
+  .primary,
+  .secondary,
+  .danger {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  /* Content */
+  .content {
+    padding: 16px;
+  }
+
+  /* Dashboard cards */
+  .cards {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .metric {
+    font-size: 23px;
+  }
+
+  /* Panels */
+  .grid2 {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .panel {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  /* Forms */
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .field.full-row {
+    grid-column: auto;
+  }
+
+  .input,
+  .select,
+  .textarea,
+  .toolbar input,
+  .toolbar select {
+    width: 100%;
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .textarea {
+    min-height: 100px;
+  }
+
+  .field label {
+    font-size: 13px;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* Buttons */
+  button {
+    min-height: 42px;
+  }
+
+  .actions {
+    gap: 7px;
+  }
+
+  .mini {
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+
+  /* Tables */
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table {
+    min-width: 650px;
+  }
+
+  /* Modal */
+  .modal {
+    padding: 8px;
+    align-items: flex-end;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: 94vh;
+    border-radius: 16px 16px 0 0;
+    padding: 16px;
+  }
+
+  .modal-head {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 2;
+    padding-bottom: 10px;
+  }
+
+  /* Quota */
+  .quota-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  /* Finance */
+  .finance-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-footer {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
+
+@media (max-width: 480px) {
+
+  .topbar {
+    padding: 12px;
+  }
+
+  .topbar h1 {
+    font-size: 18px;
+  }
+
+  .content {
+    padding: 12px;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: 13px;
+  }
+
+  .panel {
+    padding: 13px;
+  }
+
+  .nav {
+    font-size: 9px;
+  }
+
+  .nav.active {
+    font-weight: 700;
+  }
+
+  .top-actions .primary {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+}
